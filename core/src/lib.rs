@@ -15,12 +15,12 @@
 //! icon.
 
 //pub mod api;
-//pub mod auth;
+pub mod auth;
 pub mod cloud;
 pub mod config;
 //pub mod daemon;
 pub mod db;
-//pub mod drive;
+pub mod drive;
 pub mod engine;
 pub mod fake;
 pub mod gdocs;
@@ -28,7 +28,7 @@ pub mod ignore;
 pub mod local;
 pub mod mirror;
 pub mod paths;
-//pub mod throttle;
+pub mod throttle;
 //pub mod tray;
 pub mod trash;
 //pub mod watch;
