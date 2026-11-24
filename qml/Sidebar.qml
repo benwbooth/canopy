@@ -113,7 +113,7 @@ Rectangle {
                         visible: phase === "signed_out"
                         width: col.width; label: "Sign In Again…"; icon: "dialog-password|system-lock-screen"; alert: true
                         tip: "Google access for this account stopped working. Sign in to continue syncing."
-                        onClicked: sb.win.act("addaccount")
+                        onClicked: a.hearth_id ? sb.win.api("hearth_signin", { id: a.hearth_id }, () => sb.win.toast.show("Finish signing in in your browser.")) : sb.win.act("addaccount")
                     }
                     Row_ { width: col.width; label: "My Drive"; icon: "folder-cloud|folder-remote"; selected: sb.win.page === "browse" && sb.win.account === a.id && sb.win.section === "my_drive"; tip: "Everything in your Drive: tick what to keep on this computer"; onClicked: sb.win.go("browse", a.id, "my_drive") }
                     Row_ { width: col.width; label: "Shared with Me"; icon: "folder-publicshare|folder-remote"; selected: sb.win.page === "browse" && sb.win.account === a.id && sb.win.section === "shared"; tip: "Files other people shared with you"; onClicked: sb.win.go("browse", a.id, "shared") }

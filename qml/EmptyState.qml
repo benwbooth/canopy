@@ -36,7 +36,7 @@ Item {
             elide: Text.ElideNone
             font.pixelSize: Theme.small
             color: Theme.fgTertiary
-            text: es.win.status.has_client ? "" : "First time? canopy needs a Google Cloud sign-in client of your own (five minutes, once). Add Google Account walks you through it."
+            text: es.win.status.hearth ? "Your Google accounts from Settings › Internet Accounts are offered there." : es.win.status.has_client ? "" : "First time? canopy needs a Google Cloud sign-in client of your own (five minutes, once). Add Google Account walks you through it."
         }
     }
 }

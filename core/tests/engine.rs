@@ -396,3 +396,70 @@ fn one_way_modes() {
     assert!(t.cloud.child(ROOT, "photo.jpg").is_some());
     assert!(!t.p("theirs").exists());
 }
+
+#[test]
+fn stale_mirror_never_overwrites_cloud() {
+    let t = setup();
+    let id = t.cloud.put(ROOT, "doc.txt", b"base");
+    t.sync();
+    // Someone edits in Drive; canopy hasn't polled yet (stale mirror).
+    t.cloud.edit(&id, b"cloud edit");
+    t.write("doc.txt", "local edit");
+    let r = t.eng.pass(&PassOptions::default()).unwrap();
+    assert_eq!(r.uploads, 0, "must not upload over an unseen version");
+    assert_eq!(t.cloud.content(&id).unwrap(), b"cloud edit");
+    // After the next poll it's a conflict: both kept.
+    t.sync();
+    assert_eq!(t.read("doc.txt"), "cloud edit");
+    let copy = std::fs::read_dir(&t.local).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).find(|n| n.contains("conflict")).expect("conflict copy");
+    assert_eq!(t.read(&copy), "local edit");
+    t.settled();
+}
+
+#[test]
+fn stale_mirror_never_trashes_changed_cloud_file() {
+    let t = setup();
+    let id = t.cloud.put(ROOT, "keep.txt", b"v1");
+    t.cloud.put(ROOT, "other.txt", b"o"); // (an emptied folder is held instead)
+    t.sync();
+    t.cloud.edit(&id, b"v2 in the cloud");
+    std::fs::remove_file(t.p("keep.txt")).unwrap();
+    t.eng.pass(&PassOptions::default()).unwrap();
+    assert!(!t.cloud.item(&id).unwrap().trashed, "a version canopy never saw is not deleted");
+    t.sync();
+    assert_eq!(t.read("keep.txt"), "v2 in the cloud");
+    t.settled();
+}
+
+#[test]
+fn hidden_local_edit_survives_cloud_change() {
+    let t = setup();
+    let id = t.cloud.put(ROOT, "notes.txt", b"aaaa");
+    t.sync();
+    // Same size, same mtime: invisible to size/mtime checks.
+    let p = t.p("notes.txt");
+    let m = std::fs::metadata(&p).unwrap();
+    let mt = filetime::FileTime::from_last_modification_time(&m);
+    std::fs::write(&p, "bbbb").unwrap();
+    filetime::set_file_mtime(&p, mt).unwrap();
+    t.cloud.edit(&id, b"cloud");
+    t.sync();
+    assert_eq!(t.read("notes.txt"), "cloud");
+    let copy = std::fs::read_dir(&t.local).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).find(|n| n.contains("conflict")).expect("the hidden edit is kept");
+    assert_eq!(t.read(&copy), "bbbb");
+}
+
+#[test]
+fn keep_local_pins_the_replaced_cloud_version() {
+    let pol = ConflictPolicy { edit_edit: Resolution::KeepLocal, ..Default::default() };
+    let t = setup_with(Mode::TwoWay, ExportOption::Link, pol, &[]);
+    let id = t.cloud.put(ROOT, "doc.txt", b"base");
+    t.sync();
+    t.cloud.edit(&id, b"cloud");
+    t.write("doc.txt", "local");
+    t.cloud.calls();
+    t.sync();
+    let calls = t.cloud.calls();
+    assert!(calls.iter().any(|c| c == "pin doc.txt"), "{calls:?}");
+    assert_eq!(t.cloud.content(&id).unwrap(), b"local");
+}

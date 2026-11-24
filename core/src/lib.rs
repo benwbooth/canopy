@@ -25,6 +25,7 @@ pub mod engine;
 pub mod fake;
 pub mod gdocs;
 pub mod handlers;
+pub mod hearth;
 pub mod ignore;
 pub mod local;
 pub mod mirror;

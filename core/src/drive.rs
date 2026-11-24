@@ -577,6 +577,14 @@ impl Cloud for Drive {
         Ok(item_from(&self.send_json("POST", &format!("{API}/files/{id}/copy"), &[("supportsAllDrives", "true"), ("fields", FIELDS)], &json!({"name": name, "parents": [parent]}))?))
     }
 
+    fn keep_revision(&self, id: &str) -> Result<()> {
+        let v = self.get_json(&format!("{API}/files/{id}"), &[("fields", "headRevisionId"), ("supportsAllDrives", "true")])?;
+        // Google files keep their whole history anyway (no head revision).
+        let Some(rev) = v.get("headRevisionId").and_then(|x| x.as_str()) else { return Ok(()) };
+        self.send_json("PATCH", &format!("{API}/files/{id}/revisions/{rev}"), &[("fields", "id")], &json!({"keepForever": true}))?;
+        Ok(())
+    }
+
     fn set_starred(&self, id: &str, starred: bool) -> Result<()> {
         self.send_json("PATCH", &format!("{API}/files/{id}"), &[("supportsAllDrives", "true"), ("fields", "id")], &json!({"starred": starred}))?;
         Ok(())

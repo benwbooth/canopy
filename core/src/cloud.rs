@@ -122,4 +122,9 @@ pub trait Cloud: Send + Sync {
     fn trash(&self, id: &str) -> Result<()>;
     fn copy(&self, id: &str, parent: &str, name: &str) -> Result<CloudItem>;
     fn set_starred(&self, id: &str, starred: bool) -> Result<()>;
+    /// Keep the current version of a file forever in Drive's version
+    /// history (before it's replaced by a version Drive never had).
+    fn keep_revision(&self, _id: &str) -> Result<()> {
+        Ok(())
+    }
 }

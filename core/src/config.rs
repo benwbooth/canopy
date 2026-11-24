@@ -133,6 +133,9 @@ pub struct Account {
     pub paused: bool,
     pub sync_shared_with_me: bool,
     pub sync_shared_drives: bool,
+    /// Signed in through hearth's Internet Accounts (its account id):
+    /// tokens come from there, canopy keeps no sign-in of its own.
+    pub hearth_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

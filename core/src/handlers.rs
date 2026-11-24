@@ -316,7 +316,7 @@ fn status(s: &S) -> Value {
             json!({
                 "id": cfg.id, "email": cfg.email, "name": cfg.name, "photo": cfg.photo, "base": cfg.base,
                 "paused": cfg.paused, "export": cfg.export, "conflicts": cfg.conflicts, "ignore_rules": cfg.ignore_rules,
-                "sync_shared_drives": cfg.sync_shared_drives, "sync_shared_with_me": cfg.sync_shared_with_me,
+                "sync_shared_drives": cfg.sync_shared_drives, "sync_shared_with_me": cfg.sync_shared_with_me, "hearth_id": cfg.hearth_id,
                 "roots": cfg.roots, "state": st,
                 "errors": issues.iter().filter(|i| i.kind != "conflict").count(),
                 "conflicts_count": issues.iter().filter(|i| i.kind == "conflict").count(),
@@ -324,30 +324,47 @@ fn status(s: &S) -> Value {
         })
         .collect();
     let transfers: Vec<Value> = s.transfers.lock().values().map(|(v, _)| v.clone()).collect();
-    json!({"state": s.overall(), "paused": s.settings.read().paused, "accounts": accts, "transfers": transfers, "has_client": !s.settings.read().client_id.is_empty(), "version": env!("CARGO_PKG_VERSION")})
+    json!({"state": s.overall(), "paused": s.settings.read().paused, "accounts": accts, "transfers": transfers, "has_client": !s.settings.read().client_id.is_empty(), "hearth": s.hearth.load(Ordering::Relaxed), "version": env!("CARGO_PKG_VERSION")})
 }
 
-fn add_account(s: &S, token: String) -> Result<Value> {
+/// Add (or sign in again to) an account. `hearth`: an Internet Accounts
+/// account id (tokens come from there); otherwise `token` is canopy's own
+/// refresh token.
+fn add_account(s: &S, token: Option<String>, hearth: Option<String>) -> Result<Value> {
     let settings = s.settings.read().clone();
     let agent = crate::drive::agent(&settings.proxy);
-    let sess = auth::Session::new(auth::Client { id: settings.client_id.clone(), secret: settings.client_secret.clone() }, token.clone(), agent.clone());
-    let probe = crate::drive::Drive::new(agent, Arc::new(sess), None);
+    let tokens: Arc<dyn crate::drive::Tokens> = match (&hearth, &token) {
+        (Some(h), _) => Arc::new(crate::hearth::HearthTokens::new(h)),
+        (None, Some(t)) => Arc::new(auth::Session::new(auth::Client { id: settings.client_id.clone(), secret: settings.client_secret.clone() }, t.clone(), agent.clone())),
+        _ => bail!("nothing to sign in with"),
+    };
+    let probe = crate::drive::Drive::new(agent, tokens, None);
     let about = crate::cloud::Cloud::about(&probe)?;
     let id = about.email.to_lowercase();
-    auth::store_token(&id, &about.email, &token)?;
-    if let Ok(a) = s.account(&id) {
-        // Signing in again: swap the runtime.
-        let _ = a.tx.send(Trig::Stop);
-        s.accounts.write().retain(|x| !Arc::ptr_eq(x, &a));
-        let cfg = a.cfg.read().clone();
-        let d = daemon::drive_for(s, &id)?;
-        daemon::start_account(s, cfg, d.clone(), Some(d))?;
-    } else {
-        let base = paths::default_base().join(&about.email);
-        let cfg = Account { id: id.clone(), email: about.email.clone(), name: about.name.clone(), photo: about.photo.clone(), base: base.clone(), roots: daemon::default_roots(&base), ..Default::default() };
-        let d = daemon::drive_for(s, &id)?;
-        daemon::start_account(s, cfg, d.clone(), Some(d))?;
+    if let Some(t) = &token {
+        auth::store_token(&id, &about.email, t)?;
     }
+    let cfg = match s.account(&id) {
+        Ok(a) => {
+            // Signing in again (or moving to Internet Accounts): new runtime,
+            // same folders and choices.
+            let _ = a.tx.send(Trig::Stop);
+            a.cancel.store(true, Ordering::Relaxed);
+            s.accounts.write().retain(|x| !Arc::ptr_eq(x, &a));
+            let mut cfg = a.cfg.read().clone();
+            if hearth.is_some() && cfg.hearth_id.is_none() {
+                auth::forget_token(&id);
+            }
+            cfg.hearth_id = hearth.clone();
+            cfg
+        }
+        Err(_) => {
+            let base = paths::default_base().join(&about.email);
+            Account { id: id.clone(), email: about.email.clone(), name: about.name.clone(), photo: about.photo.clone(), base: base.clone(), roots: daemon::default_roots(&base), hearth_id: hearth.clone(), ..Default::default() }
+        }
+    };
+    let d = daemon::drive_for(s, &cfg)?;
+    daemon::start_account(s, cfg, d.clone(), Some(d))?;
     s.save_accounts()?;
     let _ = set_autostart(s.settings.read().start_at_login);
     s.changed();
@@ -523,7 +540,7 @@ pub fn handle(s: &S, cmd: &str, req: &Value) -> Result<Value> {
             let p = s.logins.lock().remove(str_arg(req, "login")).ok_or_else(|| anyhow!("that sign-in was cancelled"))?;
             let agent = crate::drive::agent(&s.settings.read().proxy);
             let token = p.wait(&agent, Duration::from_secs(600))?;
-            add_account(s, token)
+            add_account(s, Some(token), None)
         }
         "login_paste" => {
             let key = str_arg(req, "login");
@@ -533,8 +550,35 @@ pub fn handle(s: &S, cmd: &str, req: &Value) -> Result<Value> {
                 p.finish_pasted(&crate::drive::agent(&s.settings.read().proxy), str_arg(req, "text"))?
             };
             s.logins.lock().remove(key);
-            add_account(s, token)
+            add_account(s, Some(token), None)
         }
+        "hearth_accounts" => {
+            // Google accounts in Settings › Internet Accounts, and whether
+            // each can sync (signed in with the full Drive permission).
+            if !crate::hearth::available() {
+                return Ok(json!({"available": false}));
+            }
+            let mine: Vec<(String, Option<String>)> = s.accounts.read().iter().map(|a| (a.cfg.read().email.to_lowercase(), a.cfg.read().hearth_id.clone())).collect();
+            let list: Vec<Value> = crate::hearth::google_accounts()?
+                .into_iter()
+                .map(|a| {
+                    let email = a["email"].as_str().unwrap_or("").to_string();
+                    let id = a["id"].as_str().unwrap_or("").to_string();
+                    let uses: Vec<String> = serde_json::from_value(a["uses"].clone()).unwrap_or_default();
+                    let linked = mine.iter().any(|(e, h)| h.as_deref() == Some(id.as_str()) || (e == &email.to_lowercase() && h.is_some()));
+                    let in_canopy = mine.iter().any(|(e, _)| e == &email.to_lowercase());
+                    json!({"id": id, "email": email, "name": a["name"], "signed_out": a["signed_out"].as_bool().unwrap_or(false),
+                           "can_sync": uses.iter().any(|u| u == crate::hearth::PURPOSE), "linked": linked, "in_canopy": in_canopy})
+                })
+                .collect();
+            Ok(json!({"available": true, "registered": crate::hearth::google_registered(), "accounts": list}))
+        }
+        "hearth_link" => add_account(s, None, Some(str_arg(req, "id").to_string())),
+        "hearth_signin" => {
+            crate::hearth::sign_in_again(str_arg(req, "id"))?;
+            Ok(Value::Null)
+        }
+        "hearth_open" => Ok(json!(crate::hearth::open_settings(str_arg(req, "arg")))),
         "login_cancel" => {
             s.logins.lock().remove(str_arg(req, "login"));
             Ok(Value::Null)
@@ -550,7 +594,9 @@ pub fn handle(s: &S, cmd: &str, req: &Value) -> Result<Value> {
                 }
             }
             s.accounts.write().retain(|x| !Arc::ptr_eq(x, &a));
-            auth::forget_token(&id);
+            if a.cfg.read().hearth_id.is_none() {
+                auth::forget_token(&id);
+            }
             let _ = std::fs::remove_dir_all(paths::account_dir(&id));
             s.save_accounts()?;
             s.changed();

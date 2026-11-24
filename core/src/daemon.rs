@@ -96,6 +96,8 @@ pub struct Shared {
     /// Roots that had their first pass since start (offline deletions).
     started: Mutex<HashSet<String>>,
     pub tray: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
+    /// hearth's Internet Accounts service is there.
+    pub hearth: AtomicBool,
     last_note: Mutex<HashMap<String, Instant>>,
 }
 
@@ -337,8 +339,9 @@ fn worker(s: S, a: Arc<Acct>, rx: Receiver<Trig>) {
             Err(e) => {
                 let msg = format!("{e:#}");
                 if drive::is_auth_error(&e) {
-                    a.set_phase("signed_out", "Sign in again to keep syncing.");
-                    s.notify("auth", "canopy: sign in again", &format!("Google Drive access for {} stopped working. Open canopy to sign in again.", a.cfg.read().email));
+                    let hearth = a.cfg.read().hearth_id.is_some();
+                    a.set_phase("signed_out", &if hearth { format!("{msg}") } else { "Sign in again to keep syncing.".into() });
+                    s.notify("auth", "canopy: sign in again", &format!("Google Drive access for {} stopped working. Open canopy to sign in again{}.", a.cfg.read().email, if hearth { " (Settings › Internet Accounts)" } else { "" }));
                     backoff = 6;
                 } else if drive::is_offline(&e) {
                     a.set_phase("offline", "No connection to Google Drive. canopy keeps trying.");
@@ -483,14 +486,20 @@ pub fn start_account(s: &S, cfg: Account, cloud: Arc<dyn Cloud>, drive: Option<A
     Ok(a)
 }
 
-/// The Drive client of a signed-in account.
-pub fn drive_for(s: &S, account: &str) -> Result<Arc<Drive>> {
+/// The Drive client of a signed-in account: tokens from hearth's Internet
+/// Accounts when it was added there, else canopy's own sign-in.
+pub fn drive_for(s: &S, cfg: &Account) -> Result<Arc<Drive>> {
     let settings = s.settings.read().clone();
-    let token = auth::load_token(account)?;
     let agent = drive::agent(&settings.proxy);
-    let sess = auth::Session::new(auth::Client { id: settings.client_id.clone(), secret: settings.client_secret.clone() }, token, agent.clone());
-    let db = Arc::new(Db::open(&paths::account_dir(account).join("state.db"))?);
-    Ok(Arc::new(Drive::new(agent, Arc::new(sess), Some(db))))
+    let tokens: Arc<dyn drive::Tokens> = match &cfg.hearth_id {
+        Some(h) => Arc::new(crate::hearth::HearthTokens::new(h)),
+        None => {
+            let token = auth::load_token(&cfg.id)?;
+            Arc::new(auth::Session::new(auth::Client { id: settings.client_id.clone(), secret: settings.client_secret.clone() }, token, agent.clone()))
+        }
+    };
+    let db = Arc::new(Db::open(&paths::account_dir(&cfg.id).join("state.db"))?);
+    Ok(Arc::new(Drive::new(agent, tokens, Some(db))))
 }
 
 pub fn new_shared(watch: bool) -> (S, Option<Receiver<RootKey>>) {
@@ -509,6 +518,7 @@ pub fn new_shared(watch: bool) -> (S, Option<Receiver<RootKey>>) {
         quit: AtomicBool::new(false),
         started: Mutex::default(),
         tray: Mutex::new(None),
+        hearth: AtomicBool::new(false),
         last_note: Mutex::default(),
     });
     (s, Some(wrx))
@@ -522,9 +532,10 @@ pub fn run() -> Result<()> {
     if std::os::unix::net::UnixStream::connect(&sock).is_ok() {
         return Err(anyhow!("canopyd is already running"));
     }
+    s.hearth.store(crate::hearth::available(), Ordering::Relaxed);
     for cfg in Accounts::load().accounts {
         let id = cfg.id.clone();
-        match drive_for(&s, &id) {
+        match drive_for(&s, &cfg) {
             Ok(d) => {
                 start_account(&s, cfg, d.clone(), Some(d))?;
             }
@@ -547,6 +558,21 @@ pub fn run() -> Result<()> {
                     let _ = a.tx.send(Trig::Local(root));
                 }
             }
+        });
+    }
+    // Internet Accounts changed (signed in again, allowed Drive, removed):
+    // accounts that come from there try again.
+    if s.hearth.load(Ordering::Relaxed) {
+        let w = Arc::downgrade(&s);
+        crate::hearth::watch(move || {
+            let Some(s) = w.upgrade() else { return };
+            for a in s.accounts.read().iter() {
+                if a.cfg.read().hearth_id.is_some() {
+                    let _ = a.tx.send(Trig::Now);
+                }
+            }
+            s.broadcast(json!({"event": "hearth_changed"}));
+            s.changed();
         });
     }
     crate::tray::start(&s);

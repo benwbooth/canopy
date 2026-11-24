@@ -104,8 +104,10 @@ enum Op {
     Download(String, CloudItem, Option<LocalItem>),
     WriteLink(String, CloudItem),
     Export(String, CloudItem, &'static str, Option<LocalItem>),
-    /// Upload new (None) or over an existing cloud file.
-    Upload(String, Option<CloudItem>),
+    /// Upload new (None) or over an existing cloud file; `true`: keep the
+    /// replaced version forever in Drive's history (the user chose to
+    /// overwrite a version canopy never had).
+    Upload(String, Option<CloudItem>, bool),
     /// A copied link file: copy the Google file it points at.
     CopyCloud(String, String),
     Record(Base),
@@ -277,6 +279,14 @@ impl Engine {
             }
         }
         Ok(out)
+    }
+
+    /// Whether a cloud file's content differs from what was planned on.
+    fn content_differs(planned: &CloudItem, now: &CloudItem) -> bool {
+        match (&planned.md5, &now.md5) {
+            (Some(a), Some(b)) => a != b,
+            _ => planned.version != now.version,
+        }
     }
 
     fn local_changed(b: &Base, l: &LocalItem) -> bool {
@@ -465,10 +475,10 @@ impl Engine {
                 } else if gdocs::is_link_name(p) {
                     match gdocs::read_link(&self.local_path(p)) {
                         Some(link) => ops.push(Op::CopyCloud(p.into(), link.file_id)),
-                        None => ops.push(Op::Upload(p.into(), None)),
+                        None => ops.push(Op::Upload(p.into(), None, false)),
                     }
                 } else {
-                    ops.push(Op::Upload(p.into(), None));
+                    ops.push(Op::Upload(p.into(), None, false));
                 }
             }
             (None, None, Some(c)) => {
@@ -534,7 +544,7 @@ impl Engine {
             (Some(b), Some(l), None) => {
                 // Gone from the cloud (deleted, trashed, unshared).
                 if !down {
-                    ops.push(if l.is_dir { Op::CloudMkdir(p.into()) } else { Op::Upload(p.into(), None) });
+                    ops.push(if l.is_dir { Op::CloudMkdir(p.into()) } else { Op::Upload(p.into(), None, false) });
                     return;
                 }
                 if Self::local_changed(b, l) && b.kind != 'g' {
@@ -578,7 +588,7 @@ impl Engine {
                         } else if c.kind == 'g' && !gdocs::can_upload_back(&c.item) {
                             ops.push(Op::Record(Self::base_for(p, 'g', &c.item, l)));
                         } else if up && self.root.mode != Mode::CloudToLocal {
-                            ops.push(Op::Upload(p.into(), Some(c.item.clone())));
+                            ops.push(Op::Upload(p.into(), Some(c.item.clone()), false));
                         }
                     }
                     (false, true) => {
@@ -587,7 +597,7 @@ impl Engine {
                         } else if down {
                             self.push_download(p, c, Some(l.clone()), ops);
                         } else {
-                            ops.push(Op::Upload(p.into(), Some(c.item.clone())));
+                            ops.push(Op::Upload(p.into(), Some(c.item.clone()), false));
                         }
                     }
                     (true, true) => {
@@ -601,7 +611,7 @@ impl Engine {
                         } else if self.root.mode == Mode::CloudToLocal {
                             self.push_download(p, c, Some(l.clone()), ops);
                         } else if self.root.mode == Mode::LocalToCloud {
-                            ops.push(Op::Upload(p.into(), Some(c.item.clone())));
+                            ops.push(Op::Upload(p.into(), Some(c.item.clone()), false));
                         } else {
                             self.conflict(p, "edit_edit", forced.unwrap_or(pol.edit_edit), Some(l), Some(c), ops, rep);
                         }
@@ -645,7 +655,7 @@ impl Engine {
                 if l.map(|l| l.is_dir).unwrap_or(false) {
                     ops.push(Op::CloudMkdir(aside));
                 } else {
-                    ops.push(Op::Upload(aside, None));
+                    ops.push(Op::Upload(aside, None, false));
                 }
                 self.activity("conflict", p, "kept both versions");
             }
@@ -653,9 +663,9 @@ impl Engine {
                 if let Some(c) = c {
                     if c.kind == 'd' || l.map(|l| l.is_dir).unwrap_or(false) {
                         ops.push(Op::TrashCloud(p.into(), c.item.id.clone()));
-                        ops.push(Op::Upload(p.into(), None));
+                        ops.push(Op::Upload(p.into(), None, false));
                     } else {
-                        ops.push(Op::Upload(p.into(), Some(c.item.clone())));
+                        ops.push(Op::Upload(p.into(), Some(c.item.clone()), true));
                     }
                 }
             }
@@ -673,7 +683,7 @@ impl Engine {
                 if l.map(|l| l.is_dir).unwrap_or(false) {
                     ops.push(Op::CloudMkdir(p.into()));
                 } else {
-                    ops.push(Op::Upload(p.into(), None));
+                    ops.push(Op::Upload(p.into(), None, false));
                 }
             }
             ("local_delete_cloud_edit", Resolution::KeepLocal) => {
@@ -810,7 +820,7 @@ impl Engine {
 
     fn do_op(&self, o: Op, rep: &mut Report) {
         let path = match &o {
-            Op::LocalMkdir(p, _) | Op::CloudMkdir(p) | Op::SetAside(p, _) | Op::Download(p, ..) | Op::WriteLink(p, _) | Op::Export(p, ..) | Op::Upload(p, _) | Op::CopyCloud(p, _) | Op::Forget(p) | Op::TrashLocal(p) | Op::TrashCloud(p, _) | Op::Unsync(p) => p.clone(),
+            Op::LocalMkdir(p, _) | Op::CloudMkdir(p) | Op::SetAside(p, _) | Op::Download(p, ..) | Op::WriteLink(p, _) | Op::Export(p, ..) | Op::Upload(p, _, _) | Op::CopyCloud(p, _) | Op::Forget(p) | Op::TrashLocal(p) | Op::TrashCloud(p, _) | Op::Unsync(p) => p.clone(),
             Op::Record(b) => b.path.clone(),
         };
         let quiet = matches!(o, Op::Record(_) | Op::Forget(_));
@@ -896,9 +906,25 @@ impl Engine {
                 self.activity("download", &p, "converted from Google format");
                 Ok(())
             }
-            Op::Upload(p, existing) => {
+            Op::Upload(p, existing, pin) => {
                 let lp = self.local_path(&p);
                 let before = local::stat(&lp).ok_or_else(|| anyhow!("the file is gone"))?;
+                if let Some(e) = &existing {
+                    // Never overwrite a version canopy hasn't seen: ask Drive
+                    // itself (the mirror can be seconds behind).
+                    let now = self.cloud.get(&e.id)?;
+                    match now {
+                        None => bail!("deleted in Google Drive meanwhile; it will be compared again"),
+                        Some(n) if n.trashed => bail!("moved to Google Drive's trash meanwhile; it will be compared again"),
+                        Some(n) if Self::content_differs(e, &n) => bail!("changed in Google Drive meanwhile; it will be compared again"),
+                        _ => {}
+                    }
+                    if pin {
+                        if let Err(e) = self.cloud.keep_revision(&e.id) {
+                            eprintln!("canopy: couldn't pin the replaced version of {p}: {e:#}");
+                        }
+                    }
+                }
                 let parent = match &existing {
                     Some(e) => e.parents.first().cloned().unwrap_or_else(|| self.root_id.clone()),
                     None => self.cloud_parent_now(parent_of(&p))?,
@@ -953,6 +979,24 @@ impl Engine {
                 Ok(())
             }
             Op::TrashCloud(p, id) => {
+                // Only what canopy last saw: a version changed in Drive since
+                // is kept (the next pass downloads it again).
+                if let Some(b) = self.db.base_get(rid, &p)? {
+                    match self.cloud.get(&id)? {
+                        None => {
+                            self.db.base_remove_tree(rid, &p)?;
+                            return Ok(());
+                        }
+                        Some(n) if n.trashed => {
+                            self.db.base_remove_tree(rid, &p)?;
+                            return Ok(());
+                        }
+                        Some(n) if b.kind != 'd' && (n.md5.is_some() && n.md5 != b.c_md5 || n.md5.is_none() && n.version != b.c_version) => {
+                            bail!("changed in Google Drive since; kept there and downloaded again");
+                        }
+                        _ => {}
+                    }
+                }
                 self.cloud.trash(&id)?;
                 self.db.base_remove_tree(rid, &p)?;
                 rep.deletes += 1;
@@ -976,6 +1020,20 @@ impl Engine {
         if now.as_ref() != expect {
             let _ = std::fs::remove_file(tmp);
             bail!("changed here while downloading; it will be compared again");
+        }
+        // Replacing a local file: only if its content is what was last
+        // synced (an edit that kept the size and time is caught here). A
+        // different one is kept beside it as a conflict copy.
+        if expect.is_some() && kind == 'f' {
+            if let Some(b) = self.db.base_get(&self.root.id, p)? {
+                if let Some(m) = &b.c_md5 {
+                    if md5_file(&lp).ok().as_ref() != Some(m) {
+                        let aside = self.conflict_name(p);
+                        std::fs::rename(&lp, self.local_path(&aside))?;
+                        self.activity("conflict", p, &format!("this computer's version kept as {}", name_of(&aside)));
+                    }
+                }
+            }
         }
         let ft = filetime::FileTime::from_unix_time(item.mtime as i64, (item.mtime.fract() * 1e9) as u32);
         filetime::set_file_mtime(tmp, ft)?;

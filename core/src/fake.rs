@@ -303,6 +303,13 @@ impl Cloud for FakeCloud {
         Ok(s.items[&nid].clone())
     }
 
+    fn keep_revision(&self, id: &str) -> Result<()> {
+        let mut s = self.s.lock();
+        let name = s.items.get(id).map(|i| i.name.clone()).unwrap_or_default();
+        s.calls.push(format!("pin {name}"));
+        Ok(())
+    }
+
     fn set_starred(&self, id: &str, starred: bool) -> Result<()> {
         let mut s = self.s.lock();
         if let Some(it) = s.items.get_mut(id) {

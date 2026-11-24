@@ -70,7 +70,7 @@ Sheet {
         }
         Line {
             label: "Remove this account"
-            help: "canopy stops syncing it and signs out. Your files stay in the folder and in Google Drive."
+            help: as_.a.hearth_id ? "canopy stops syncing it. The account stays in Settings › Internet Accounts for your other apps; your files stay in the folder and in Google Drive." : "canopy stops syncing it and signs out. Your files stay in the folder and in Google Drive."
             PushButton {
                 destructive: true
                 text: "Remove…"
