@@ -8,6 +8,10 @@ license = "MIT"
 [lib]
 path = "src/lib.rs"
 
+[[bin]]
+name = "canopyd"
+path = "src/bin/canopyd.rs"
+
 [dependencies]
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
@@ -16,6 +20,8 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 ureq = { version = "2.12", features = ["json", "socks-proxy"] }
 oo7 = { version = "0.4", default-features = false, features = ["async-std", "native_crypto"] }
 futures-lite = "2"
+ksni = { version = "0.3", default-features = false, features = ["blocking", "async-io"] }
+zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }
 inotify = "0.11"
 ignore = "0.4"
 md-5 = "0.10"

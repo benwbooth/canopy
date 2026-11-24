@@ -14,21 +14,22 @@
 //! the `canopy` command and grove's badges talk to it) and shows the tray
 //! icon.
 
-//pub mod api;
+pub mod api;
 pub mod auth;
 pub mod cloud;
 pub mod config;
-//pub mod daemon;
+pub mod daemon;
 pub mod db;
 pub mod drive;
 pub mod engine;
 pub mod fake;
 pub mod gdocs;
+pub mod handlers;
 pub mod ignore;
 pub mod local;
 pub mod mirror;
 pub mod paths;
 pub mod throttle;
-//pub mod tray;
+pub mod tray;
 pub mod trash;
 pub mod watch;
