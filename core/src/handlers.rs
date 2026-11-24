@@ -55,7 +55,9 @@ fn connection(s: S, c: UnixStream) -> Result<()> {
                 continue;
             }
         };
-        let id = req.get("id").cloned().unwrap_or(Value::Null);
+        // The request number: "req" (current clients) or "id" (older ones,
+        // which never send an "id" argument). Echoed in both.
+        let id = req.get("req").or_else(|| req.get("id")).cloned().unwrap_or(Value::Null);
         let cmd = req.get("cmd").and_then(|x| x.as_str()).unwrap_or("").to_string();
         if cmd == "subscribe" {
             let rx = s.subscribe();
@@ -67,12 +69,12 @@ fn connection(s: S, c: UnixStream) -> Result<()> {
                     }
                 }
             });
-            writeln!(w.lock(), "{}", json!({"id": id, "ok": true, "result": null}))?;
+            writeln!(w.lock(), "{}", json!({"req": id, "id": id, "ok": true, "result": null}))?;
             continue;
         }
         let reply = match handle(&s, &cmd, &req) {
-            Ok(v) => json!({"id": id, "ok": true, "result": v}),
-            Err(e) => json!({"id": id, "ok": false, "error": format!("{e:#}")}),
+            Ok(v) => json!({"req": id, "id": id, "ok": true, "result": v}),
+            Err(e) => json!({"req": id, "id": id, "ok": false, "error": format!("{e:#}")}),
         };
         writeln!(w.lock(), "{reply}")?;
         if cmd == "quit" {
@@ -886,6 +888,10 @@ pub fn handle(s: &S, cmd: &str, req: &Value) -> Result<Value> {
             let (a, it) = target(s, req)?;
             let on = req.get("on").and_then(|x| x.as_bool()).unwrap_or(true);
             a.cloud.set_starred(&it.id, on)?;
+            // Show it at once (the changes feed confirms it later).
+            let mut it2 = it.clone();
+            it2.starred = on;
+            a.db.put_items(&[it2])?;
             let _ = a.tx.send(Trig::Now);
             Ok(Value::Null)
         }

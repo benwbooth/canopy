@@ -1,9 +1,13 @@
 //! canopyd's unix socket ($XDG_RUNTIME_DIR/canopy/canopy.sock): one JSON
 //! object per line each way.
 //!
-//!   → {"id": 1, "cmd": "status"}
-//!   ← {"id": 1, "ok": true, "result": {...}}
-//!   ← {"id": 1, "ok": false, "error": "plain words"}
+//!   → {"req": 1, "cmd": "status"}
+//!   ← {"req": 1, "ok": true, "result": {...}}
+//!   ← {"req": 1, "ok": false, "error": "plain words"}
+//!
+//! (Older clients put the request number in "id"; canopyd answers those
+//! too, echoing it in "id". New clients must use "req": "id" is also an
+//! argument of several commands.)
 //!   → {"id": 2, "cmd": "subscribe"}     then events keep coming:
 //!   ← {"event": "status", ...}          (engine::Event and "changed")
 //!
@@ -60,8 +64,10 @@ impl Client {
     pub fn call(&mut self, cmd: &str, args: Value) -> Result<Value> {
         let id = self.next;
         self.next += 1;
+        // The request number goes in "req": "id" is a common argument
+        // (an item, an issue, an account) and must not be overwritten.
         let mut req = if args.is_object() { args } else { json!({}) };
-        req["id"] = json!(id);
+        req["req"] = json!(id);
         req["cmd"] = json!(cmd);
         writeln!(self.w, "{req}")?;
         self.w.flush()?;
@@ -72,7 +78,7 @@ impl Client {
                 bail!("canopyd closed the connection");
             }
             let v: Value = serde_json::from_str(&line)?;
-            if v.get("id").and_then(|x| x.as_u64()) != Some(id) {
+            if v.get("req").and_then(|x| x.as_u64()) != Some(id) {
                 continue;
             }
             if v.get("ok").and_then(|x| x.as_bool()) == Some(true) {
