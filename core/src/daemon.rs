@@ -236,6 +236,8 @@ pub fn engine_for(s: &S, a: &Arc<Acct>, root: &Root, first: bool) -> Engine {
         sink: s.sink_for(&cfg.id),
         cancel: a.cancel.clone(),
         busy: a.busy_for(&root.id),
+        dry: AtomicBool::new(false),
+        checked: Default::default(),
     }
 }
 
@@ -413,6 +415,7 @@ fn cycle(s: &S, a: &Arc<Acct>, full: bool, dirty: &HashSet<String>, last_drives:
             let c = a.confirmed.lock();
             opts.allow_empty = c.contains(&(root.id.clone(), "empty_root".into()));
             opts.confirm_deletes = c.contains(&(root.id.clone(), "mass_delete".into()));
+            opts.confirm_first = c.contains(&(root.id.clone(), "first_sync".into()));
         }
         let rep = eng.pass(&opts)?;
         s.started.lock().insert(key);

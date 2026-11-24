@@ -60,12 +60,13 @@ Item {
                     spacing: 10
                     GIcon { name: card.r.kind === "my_drive" ? "folder-cloud|folder-remote" : card.r.kind === "shared_drive" ? "network-server|folder-remote" : "folder-sync|folder"; size: 28; anchors.verticalCenter: parent.verticalCenter }
                     Column {
-                        width: parent.width - 220
+                        width: parent.width - 320
                         anchors.verticalCenter: parent.verticalCenter
                         GLabel { width: parent.width; text: card.r.name; font.weight: Font.DemiBold }
                         GLabel { width: parent.width; text: card.r.local; color: Theme.fgSecondary; font.pixelSize: Theme.small; elide: Text.ElideMiddle }
                     }
                     SyncBadge { sync: card.held ? "error" : fv.acct.paused ? "paused" : ((fv.acct.state || {}).phase === "syncing" ? "syncing" : "synced"); size: 18; anchors.verticalCenter: parent.verticalCenter; tip: card.held || "" }
+                    GButton { text: "Review"; flat: false; iconName: "view-list-details|document-preview"; tip: "See what syncing this folder would do now (changes nothing)"; anchors.verticalCenter: parent.verticalCenter; onClicked: fv.win.openPreview(fv.acct.id, card.r.id) }
                     GButton { text: "Open"; flat: false; iconName: "folder-open"; tip: "Open this folder"; anchors.verticalCenter: parent.verticalCenter; onClicked: fv.win.cn.openPath(card.r.local) }
                 }
                 GLabel { visible: card.held !== ""; width: parent.width; text: card.held; color: Theme.danger; wrapMode: Text.Wrap; elide: Text.ElideNone }

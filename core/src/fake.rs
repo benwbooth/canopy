@@ -127,6 +127,11 @@ impl FakeCloud {
         v
     }
 
+    /// Every file's current content, trashed ones included (tests).
+    pub fn all_contents(&self) -> Vec<Vec<u8>> {
+        self.s.lock().content.values().cloned().collect()
+    }
+
     pub fn calls(&self) -> Vec<String> {
         std::mem::take(&mut self.s.lock().calls)
     }
@@ -253,10 +258,23 @@ impl Cloud for FakeCloud {
         if let Some(n) = name {
             s.calls.push(format!("rename {old} {n}"));
         }
-        if let Some((_, to)) = move_from_to {
+        if let Some((from, to)) = move_from_to {
             s.calls.push(format!("move {old}"));
             if !s.items.contains_key(to) {
                 bail!("parent {to} not found");
+            }
+            // As Drive: an item has one parent; adding without removing the
+            // current one is refused (cannotAddParent).
+            if !s.items[id].parents.iter().any(|p| p == from) {
+                bail!("Increasing the number of parents is not allowed");
+            }
+            // ...and a folder can't go inside itself.
+            let mut cur = Some(to.to_string());
+            while let Some(c) = cur {
+                if c == id {
+                    bail!("A folder can't be moved into itself");
+                }
+                cur = s.items.get(&c).and_then(|i| i.parents.first().cloned());
             }
         }
         let it = s.items.get_mut(id).unwrap();

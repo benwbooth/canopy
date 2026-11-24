@@ -68,6 +68,12 @@ pub struct PassOptions {
     pub confirm_deletes: bool,
     /// The user confirmed the root really is empty now.
     pub allow_empty: bool,
+    /// The user reviewed and started the first sync of a folder that
+    /// already had files.
+    pub confirm_first: bool,
+    /// Only plan: change nothing anywhere; Report.plan says what would
+    /// happen.
+    pub dry_run: bool,
 }
 
 #[derive(Default, Debug, Serialize, Clone)]
@@ -86,6 +92,10 @@ pub struct Report {
     pub unsynced: Vec<String>,
     /// Paths with an action still planned when the pass stopped.
     pub pending: usize,
+    /// Dry runs: what would be done, one line each ("upload a/b.txt").
+    pub plan: Vec<String>,
+    /// Held for review: what the first sync would do.
+    pub review: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -128,6 +138,10 @@ pub struct Engine {
     pub cancel: Arc<AtomicBool>,
     /// Paths with an action in flight (badges).
     pub busy: Arc<Mutex<HashSet<String>>>,
+    /// Planning only (PassOptions::dry_run): no side effects.
+    pub dry: AtomicBool,
+    /// Cloud folders checked to be live in Drive this pass.
+    pub checked: Mutex<HashSet<String>>,
 }
 
 fn parent_of(p: &str) -> &str {
@@ -215,6 +229,21 @@ impl Engine {
         self.root.mode != Mode::LocalToCloud
     }
 
+    /// Put canopy's own change into the mirror at once (the changes feed
+    /// brings it again later), so a pass never mistakes it for missing.
+    fn note(&self, item: &CloudItem) {
+        if !self.dry.load(Ordering::Relaxed) {
+            let _ = self.db.put_items(std::slice::from_ref(item));
+        }
+    }
+
+    fn note_trashed(&self, id: &str) {
+        if let Ok(Some(mut it)) = self.db.item(id) {
+            it.trashed = true;
+            let _ = self.db.put_items(&[it]);
+        }
+    }
+
     fn emit(&self, e: Event) {
         (self.sink)(e)
     }
@@ -241,7 +270,12 @@ impl Engine {
     fn cloud_tree(&self, base: &BTreeMap<String, Base>) -> Result<BTreeMap<String, CEntry>> {
         let mut out = BTreeMap::new();
         let mut stack = vec![(self.root_id.clone(), String::new())];
+        // Folders seen (a cycle in Drive's metadata must never hang a pass).
+        let mut seen: HashSet<String> = HashSet::new();
         while let Some((id, rel)) = stack.pop() {
+            if !seen.insert(id.clone()) {
+                continue;
+            }
             let mut kids = self.db.children(&id)?;
             // The oldest of same-named items keeps the name.
             kids.sort_by(|a, b| a.created.partial_cmp(&b.created).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.id.cmp(&b.id)));
@@ -289,8 +323,27 @@ impl Engine {
         }
     }
 
-    fn local_changed(b: &Base, l: &LocalItem) -> bool {
-        !l.is_dir && (l.size != b.l_size || (l.mtime - b.l_mtime).abs() > 0.0005)
+    /// Whether a local file changed since it was synced: its size or time
+    /// differs, or, when the record is "racy" (made within two seconds of
+    /// the file's time: a same-size edit in the same tick would look
+    /// unchanged), its content differs. As git's racily-clean check.
+    fn local_changed(&self, p: &str, b: &Base, l: &LocalItem) -> bool {
+        if l.is_dir {
+            return false;
+        }
+        if l.size != b.l_size {
+            return true;
+        }
+        if b.l_mtime < 0.0 {
+            if (l.mtime + b.l_mtime).abs() > 0.0005 {
+                return true;
+            }
+            return match &b.c_md5 {
+                Some(m) if b.kind == 'f' => md5_file(&self.local_path(p)).ok().as_ref() != Some(m),
+                _ => false,
+            };
+        }
+        (l.mtime - b.l_mtime).abs() > 0.0005
     }
 
     fn cloud_changed(b: &Base, c: &CEntry) -> bool {
@@ -305,18 +358,32 @@ impl Engine {
     }
 
     fn base_for(path: &str, kind: char, c: &CloudItem, l: &LocalItem) -> Base {
-        Base { path: path.into(), kind, cl_id: c.id.clone(), ino: l.ino, l_mtime: l.mtime, l_size: l.size, c_md5: c.md5.clone(), c_version: c.version }
+        // A time this recent could be shared by an edit still to come: mark
+        // it racy (negative) so the next look compares content.
+        let racy = l.mtime > crate::db::now() - 2.0;
+        Base { path: path.into(), kind, cl_id: c.id.clone(), ino: l.ino, l_mtime: if racy { -l.mtime } else { l.mtime }, l_size: l.size, c_md5: c.md5.clone(), c_version: c.version }
     }
 
+    /// "name (conflict host date time).ext", made unique (a second
+    /// conflict in the same minute gets " 2", " 3"...).
     fn conflict_name(&self, path: &str) -> String {
         let (stem, ext) = split_ext(name_of(path));
         let stamp = chrono::Local::now().format("%Y-%m-%d %H.%M");
-        join(parent_of(path), &format!("{stem} (conflict {} {stamp}){ext}", self.ctx.host))
+        for n in 1.. {
+            let extra = if n == 1 { String::new() } else { format!(" {n}") };
+            let cand = join(parent_of(path), &format!("{stem} (conflict {} {stamp}{extra}){ext}", self.ctx.host));
+            if self.local_path(&cand).symlink_metadata().is_err() {
+                return cand;
+            }
+        }
+        unreachable!()
     }
 
     /// One pass. Errors stop it only when nothing can be done (offline,
     /// root missing); single items' errors become issues.
     pub fn pass(&self, opts: &PassOptions) -> Result<Report> {
+        self.dry.store(opts.dry_run, Ordering::Relaxed);
+        self.checked.lock().clear();
         let mut rep = Report::default();
         let rid = self.root.id.clone();
         let mut base: BTreeMap<String, Base> = self.db.base_all(&rid)?.into_iter().map(|b| (b.path.clone(), b)).collect();
@@ -357,16 +424,21 @@ impl Engine {
         // --- moves ---
         let mut guard = 0;
         let mut skip: HashSet<String> = HashSet::new();
+        // Each item moves at most once per pass (moves on both sides that
+        // undo each other must not ping-pong); the rest waits for the next
+        // pass and fresh metadata.
+        let mut moved: HashSet<String> = HashSet::new();
+        let limit = base.len() + 10;
         loop {
             guard += 1;
-            if guard > 100_000 || self.cancel.load(Ordering::Relaxed) {
+            if guard > limit || self.cancel.load(Ordering::Relaxed) {
                 break;
             }
             let ids: HashMap<&str, &str> = cloud.iter().map(|(p, c)| (c.item.id.as_str(), p.as_str())).collect();
             let inos: HashMap<u64, &str> = localm.iter().filter(|(p, _)| !base.contains_key(*p)).map(|(p, l)| (l.ino, p.as_str())).collect();
             let mut found: Option<(bool, String, String)> = None;
             for b in base.values() {
-                if b.path.is_empty() || skip.contains(&b.path) {
+                if b.path.is_empty() || skip.contains(&b.path) || moved.contains(&b.cl_id) {
                     continue;
                 }
                 // Cloud move: the same id at a new path.
@@ -392,11 +464,25 @@ impl Engine {
                 }
             }
             let Some((from_cloud, from, to)) = found else { break };
-            let done = if from_cloud { self.apply_cloud_move(&from, &to) } else { self.apply_local_move(&from, &to, &base, &cloud) };
+            if let Some(b) = base.get(&from) {
+                moved.insert(b.cl_id.clone());
+            }
+            let dry = self.dry.load(Ordering::Relaxed);
+            let done = if dry {
+                rep.plan.push(format!("move {} {from} → {to}", if from_cloud { "here" } else { "in Google Drive" }));
+                skip.insert(from.clone());
+                Ok(())
+            } else if from_cloud {
+                self.apply_cloud_move(&from, &to)
+            } else {
+                self.apply_local_move(&from, &to, &base, &cloud)
+            };
             match done {
                 Ok(()) => {
                     rep.moves += 1;
-                    self.db.base_move_tree(&rid, &from, &to)?;
+                    if !dry {
+                        self.db.base_move_tree(&rid, &from, &to)?;
+                    }
                     rewrite_prefix(&mut base, &from, &to);
                     for (k, b) in base.iter_mut() {
                         b.path = k.clone();
@@ -406,7 +492,9 @@ impl Engine {
                     } else {
                         rewrite_prefix(&mut cloud, &from, &to);
                     }
-                    self.activity(if parent_of(&from) == parent_of(&to) { "rename" } else { "move" }, &to, &format!("from {from}{}", if from_cloud { " (in the cloud)" } else { "" }));
+                    if !dry {
+                        self.activity(if parent_of(&from) == parent_of(&to) { "rename" } else { "move" }, &to, &format!("from {from}{}", if from_cloud { " (in the cloud)" } else { "" }));
+                    }
                 }
                 Err(e) => {
                     // Fall back to the plain merge (delete + add) for this one.
@@ -442,6 +530,48 @@ impl Engine {
             self.db.issue(&rid, "", "attention", "mass_delete", &msg)?;
             rep.held = Some(msg);
             ops.retain(|o| !matches!(o, Op::TrashCloud(..)));
+        }
+
+        // Room for the downloads (and a gigabyte to spare).
+        let need: u64 = ops.iter().map(|o| match o { Op::Download(_, it, _) => it.size.unwrap_or(0), Op::Export(..) => 1 << 20, _ => 0 }).sum();
+        if need > 0 {
+            if let Some(free) = free_space(root_path) {
+                if need + (1 << 30) > free {
+                    let msg = format!("Not enough room on this disk: downloading needs {} MB, {} MB is free. Make room, or untick folders in My Drive.", need >> 20, free >> 20);
+                    if !opts.dry_run {
+                        self.db.issue(&rid, "", "attention", "disk_full", &msg)?;
+                    }
+                    rep.held = Some(msg);
+                    ops.retain(|o| !matches!(o, Op::Download(..) | Op::Export(..)));
+                }
+            }
+        }
+
+        if opts.dry_run {
+            rep.plan.extend(ops.iter().map(describe));
+            return Ok(rep);
+        }
+
+        // The first sync of a folder that already had files: show what
+        // would happen and wait for a go-ahead.
+        if base.is_empty() && !opts.confirm_first {
+            let uploads = ops.iter().filter(|o| matches!(o, Op::Upload(..) | Op::CloudMkdir(..) | Op::CopyCloud(..))).count();
+            let asides = ops.iter().filter(|o| matches!(o, Op::SetAside(..))).count();
+            // Uploading into an empty Drive folder puts nothing at risk;
+            // merging into one that has files, or conflicts, is reviewed.
+            if asides > 0 || rep.conflicts > 0 || (uploads > 0 && !cloud.is_empty()) {
+                let matched = ops.iter().filter(|o| matches!(o, Op::Record(..))).count();
+                let downloads = ops.iter().filter(|o| matches!(o, Op::Download(..) | Op::Export(..) | Op::WriteLink(..) | Op::LocalMkdir(..))).count();
+                let msg = format!(
+                    "Before the first sync of {}: {matched} item(s) already match Google Drive, {uploads} will be uploaded, {downloads} downloaded, and {} differ on both sides (both versions are kept). Review, then Start.",
+                    root_path.display(),
+                    rep.conflicts.max(asides)
+                );
+                self.db.issue(&rid, "", "attention", "first_sync", &msg)?;
+                rep.review = Some(serde_json::json!({"matched": matched, "uploads": uploads, "downloads": downloads, "conflicts": rep.conflicts.max(asides)}));
+                rep.held = Some(msg);
+                return Ok(rep);
+            }
         }
 
         self.run(ops, &mut rep);
@@ -547,12 +677,12 @@ impl Engine {
                     ops.push(if l.is_dir { Op::CloudMkdir(p.into()) } else { Op::Upload(p.into(), None, false) });
                     return;
                 }
-                if Self::local_changed(b, l) && b.kind != 'g' {
+                if self.local_changed(p, b, l) && b.kind != 'g' {
                     self.conflict(p, "local_edit_cloud_delete", forced.unwrap_or(pol.local_edit_cloud_delete), Some(l), None, ops, rep);
                     return;
                 }
                 if l.is_dir {
-                    let clean = localm.iter().filter(|(k, _)| under(k, p)).all(|(k, li)| base.get(k).map(|bb| !Self::local_changed(bb, li)).unwrap_or(false));
+                    let clean = localm.iter().filter(|(k, _)| under(k, p)).all(|(k, li)| base.get(k).map(|bb| !self.local_changed(k, bb, li)).unwrap_or(false));
                     if !clean {
                         ops.push(Op::CloudMkdir(p.into()));
                         return;
@@ -572,12 +702,14 @@ impl Engine {
                     }
                     return;
                 }
-                let lc = Self::local_changed(b, l);
+                let lc = self.local_changed(p, b, l);
                 let cc = Self::cloud_changed(b, c);
                 let link = c.kind == 'g' && matches!(gdocs::local_form(&c.item, self.ctx.export), GLocal::Link(_));
                 match (lc, cc) {
                     (false, false) => {
-                        if b.ino != l.ino {
+                        // Refresh the record: new inode, or a racy one that
+                        // can now be settled.
+                        if b.ino != l.ino || b.l_mtime < 0.0 {
                             ops.push(Op::Record(Self::base_for(p, b.kind, &c.item, l)));
                         }
                     }
@@ -643,8 +775,10 @@ impl Engine {
                     "local_edit_cloud_delete" => "Changed here, but deleted in Google Drive.",
                     _ => "Deleted here, but changed in Google Drive.",
                 };
-                let _ = self.db.issue(&self.root.id, p, "conflict", sub, msg);
-                self.emit(Event::Status { root: self.root.id.clone(), path: p.into(), state: 'C' });
+                if !self.dry.load(Ordering::Relaxed) {
+                    let _ = self.db.issue(&self.root.id, p, "conflict", sub, msg);
+                    self.emit(Event::Status { root: self.root.id.clone(), path: p.into(), state: 'C' });
+                }
             }
             ("edit_edit", Resolution::KeepBoth) => {
                 let aside = self.conflict_name(p);
@@ -657,7 +791,9 @@ impl Engine {
                 } else {
                     ops.push(Op::Upload(aside, None, false));
                 }
-                self.activity("conflict", p, "kept both versions");
+                if !self.dry.load(Ordering::Relaxed) {
+                    self.activity("conflict", p, "kept both versions");
+                }
             }
             ("edit_edit", Resolution::KeepLocal) => {
                 if let Some(c) = c {
@@ -709,7 +845,7 @@ impl Engine {
         if dest.symlink_metadata().is_ok() {
             bail!("{to} already exists here");
         }
-        std::fs::rename(self.local_path(from), &dest)?;
+        rename_new(&self.local_path(from), &dest)?;
         Ok(())
     }
 
@@ -730,7 +866,17 @@ impl Engine {
         let rename = (new_name != c.item.name).then_some(new_name.as_str());
         let mv = (new_parent != old_parent).then_some((old_parent.as_str(), new_parent.as_str()));
         if rename.is_some() || mv.is_some() {
-            self.cloud.update_meta(&b.cl_id, rename, mv)?;
+            // Only if Drive still has it where canopy last saw it (it may
+            // have been moved there meanwhile) and the target folder is live.
+            let now = self.cloud.get(&b.cl_id)?.ok_or_else(|| anyhow!("gone from Google Drive meanwhile"))?;
+            if now.trashed || now.parents.first() != Some(&old_parent) || now.name != c.item.name {
+                bail!("moved or renamed in Google Drive meanwhile; it will be compared again");
+            }
+            if mv.is_some() {
+                self.live_folder(&new_parent, parent_of(to))?;
+            }
+            let it = self.cloud.update_meta(&b.cl_id, rename, mv)?;
+            self.note(&it);
         }
         Ok(())
     }
@@ -750,7 +896,25 @@ impl Engine {
         if dir.is_empty() {
             return Ok(self.root_id.clone());
         }
-        self.db.base_get(&self.root.id, dir)?.filter(|b| b.kind == 'd').map(|b| b.cl_id).ok_or_else(|| anyhow!("its folder {dir} isn't in Google Drive yet"))
+        let id = self.db.base_get(&self.root.id, dir)?.filter(|b| b.kind == 'd').map(|b| b.cl_id).ok_or_else(|| anyhow!("its folder {dir} isn't in Google Drive yet"))?;
+        self.live_folder(&id, dir)?;
+        Ok(id)
+    }
+
+    /// A Drive folder something is about to go into must still be there
+    /// (not trashed or gone since the mirror looked): otherwise the new
+    /// item would land in the trash. Asked of Drive once per pass.
+    fn live_folder(&self, id: &str, dir: &str) -> Result<()> {
+        if id == self.root_id || self.checked.lock().contains(id) {
+            return Ok(());
+        }
+        match self.cloud.get(id)? {
+            Some(f) if !f.trashed => {
+                self.checked.lock().insert(id.to_string());
+                Ok(())
+            }
+            _ => bail!("its folder {dir} was deleted in Google Drive meanwhile; it will be compared again"),
+        }
     }
 
     // --- running ---
@@ -859,13 +1023,14 @@ impl Engine {
             Op::CloudMkdir(p) => {
                 let parent = self.cloud_parent_now(parent_of(&p))?;
                 let item = self.cloud.create_folder(&parent, &cloud_name(name_of(&p)))?;
+                self.note(&item);
                 let l = local::stat(&self.local_path(&p)).ok_or_else(|| anyhow!("the folder is gone"))?;
                 self.db.base_put(rid, &Self::base_for(&p, 'd', &item, &l))?;
                 self.activity("add", &p, "folder to Google Drive");
                 Ok(())
             }
             Op::SetAside(p, aside) => {
-                std::fs::rename(self.local_path(&p), self.local_path(&aside))?;
+                rename_new(&self.local_path(&p), &self.local_path(&aside))?;
                 self.db.base_remove_tree(rid, &p)?;
                 Ok(())
             }
@@ -947,6 +1112,7 @@ impl Engine {
                 let r = self.cloud.upload(&parent, &name, existing.as_ref().map(|e| e.id.as_str()), &lp, mime, before.mtime, &prog);
                 self.emit(Event::TransferDone { root: rid.clone(), path: p.clone(), up: true, ok: r.is_ok() });
                 let item = r?;
+                self.note(&item);
                 // Changed while uploading: record what was sent, so the
                 // next pass uploads again.
                 let after = local::stat(&lp).unwrap_or(before.clone());
@@ -961,6 +1127,7 @@ impl Engine {
                 let src = self.cloud.get(&from_id)?.ok_or_else(|| anyhow!("the file this link points to is gone"))?;
                 let name = split_ext(&cloud_name(name_of(&p))).0.to_string();
                 let item = self.cloud.copy(&from_id, &parent, &name)?;
+                self.note(&item);
                 let lp = self.local_path(&p);
                 std::fs::write(&lp, gdocs::link_contents(&item, &self.ctx.email))?;
                 let l = local::stat(&lp).ok_or_else(|| anyhow!("couldn't write the link"))?;
@@ -998,6 +1165,7 @@ impl Engine {
                     }
                 }
                 self.cloud.trash(&id)?;
+                self.note_trashed(&id);
                 self.db.base_remove_tree(rid, &p)?;
                 rep.deletes += 1;
                 self.activity("delete", &p, "moved to Google Drive's trash");
@@ -1029,7 +1197,7 @@ impl Engine {
                 if let Some(m) = &b.c_md5 {
                     if md5_file(&lp).ok().as_ref() != Some(m) {
                         let aside = self.conflict_name(p);
-                        std::fs::rename(&lp, self.local_path(&aside))?;
+                        rename_new(&lp, &self.local_path(&aside))?;
                         self.activity("conflict", p, &format!("this computer's version kept as {}", name_of(&aside)));
                     }
                 }
@@ -1057,4 +1225,53 @@ impl Engine {
         self.activity("unsync", rel, "removed from this computer, kept in Google Drive");
         Ok(())
     }
+}
+
+/// Free bytes for this user on the disk holding `p`.
+fn free_space(p: &Path) -> Option<u64> {
+    let c = std::ffi::CString::new(p.as_os_str().as_encoded_bytes()).ok()?;
+    let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
+    if unsafe { libc::statvfs(c.as_ptr(), &mut st) } != 0 {
+        return None;
+    }
+    Some(st.f_bavail as u64 * st.f_frsize as u64)
+}
+
+/// One planned action in words (dry runs).
+fn describe(o: &Op) -> String {
+    match o {
+        Op::LocalMkdir(p, _) => format!("make folder here: {p}"),
+        Op::CloudMkdir(p) => format!("make folder in Google Drive: {p}"),
+        Op::SetAside(p, a) => format!("keep this computer's {p} as {a}"),
+        Op::Download(p, it, l) => format!("{} {p} ({} bytes)", if l.is_some() { "download newer" } else { "download" }, it.size.unwrap_or(0)),
+        Op::WriteLink(p, _) => format!("write link file {p}"),
+        Op::Export(p, _, m, _) => format!("convert and download {p} ({m})"),
+        Op::Upload(p, e, _) => format!("{} {p}", if e.is_some() { "upload changes to" } else { "upload" }),
+        Op::CopyCloud(p, _) => format!("copy the Google file for {p}"),
+        Op::Record(b) => format!("matches already: {}", b.path),
+        Op::Forget(p) => format!("forget {p} (gone on both sides)"),
+        Op::TrashLocal(p) => format!("move to this computer's Trash: {p}"),
+        Op::TrashCloud(p, _) => format!("move to Google Drive's trash: {p}"),
+        Op::Unsync(p) => format!("stop syncing {p} (kept in Google Drive)"),
+    }
+}
+
+/// Rename that never replaces an existing file (renameat2 NOREPLACE; on a
+/// filesystem without it, check first).
+pub fn rename_new(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+    let f = std::ffi::CString::new(from.as_os_str().as_bytes())?;
+    let t = std::ffi::CString::new(to.as_os_str().as_bytes())?;
+    let r = unsafe { libc::renameat2(libc::AT_FDCWD, f.as_ptr(), libc::AT_FDCWD, t.as_ptr(), libc::RENAME_NOREPLACE) };
+    if r == 0 {
+        return Ok(());
+    }
+    let e = std::io::Error::last_os_error();
+    if e.raw_os_error() == Some(libc::EINVAL) || e.raw_os_error() == Some(libc::ENOSYS) {
+        if to.symlink_metadata().is_ok() {
+            return Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, format!("{} already exists", to.display())));
+        }
+        return std::fs::rename(from, to);
+    }
+    Err(e)
 }

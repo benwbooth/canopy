@@ -38,7 +38,7 @@ ApplicationWindow {
     readonly property var acct: accounts.find(a => a.id === account) || accounts[0] || null
     readonly property int errorCount: accounts.reduce((n, a) => n + (a.errors || 0) + Object.keys((a.state || {}).held || {}).length, 0)
     readonly property int conflictCount: accounts.reduce((n, a) => n + (a.conflicts_count || 0), 0)
-    readonly property bool anySheet: settingsSheet.visible || accountSheet.visible || signIn.visible || shareSheet.visible || addFolder.visible || helpWindow.visible || confirm.visible || progress.visible
+    readonly property bool anySheet: previewSheet.visible || settingsSheet.visible || accountSheet.visible || signIn.visible || shareSheet.visible || addFolder.visible || helpWindow.visible || confirm.visible || progress.visible
 
     Binding { target: Theme; property: "mode"; value: win.settings.appearance || "auto" }
 
@@ -101,6 +101,7 @@ ApplicationWindow {
     function confirmSheet(title, message, okText, run) { confirm.ask(title, message, okText, run) }
     function askName(title, def, run) { confirm.askName(title, def, run) }
     function openShare(target) { shareSheet.openFor(target) }
+    function openPreview(acc, root) { previewSheet.openFor(acc, root) }
     function pauseResume() { api(paused ? "resume" : "pause", {}, () => canopy.refresh()) }
     function openBase() {
         const a = acct
@@ -357,6 +358,7 @@ ApplicationWindow {
     ShareSheet { id: shareSheet; win: win }
     AddFolderSheet { id: addFolder; win: win }
     ConfirmSheet { id: confirm }
+    PreviewSheet { id: previewSheet; win: win }
     HelpWindow { id: helpWindow }
 
     // ---- test hook: CANOPY_TEST steps, then --screenshot ----
@@ -397,7 +399,8 @@ ApplicationWindow {
                 else m[arg].open()
                 break
             }
-            case "close": for (const sh of [settingsSheet, accountSheet, signIn, shareSheet, addFolder, helpWindow, progress]) sh.close(); break
+            case "review": win.openPreview(win.acct.id, ""); win.testWait = 10; break
+            case "close": for (const sh of [previewSheet, settingsSheet, accountSheet, signIn, shareSheet, addFolder, helpWindow, progress]) sh.close(); break
             }
         }
     }

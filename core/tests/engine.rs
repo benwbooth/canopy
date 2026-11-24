@@ -45,6 +45,8 @@ fn setup_with(mode: Mode, export: ExportOption, conflicts: ConflictPolicy, rules
         sink: Arc::new(|_| {}),
         cancel: Arc::new(AtomicBool::new(false)),
         busy: Default::default(),
+        dry: Default::default(),
+        checked: Default::default(),
     };
     T { cloud, eng, _dir: dir, local, trash }
 }
@@ -462,4 +464,56 @@ fn keep_local_pins_the_replaced_cloud_version() {
     let calls = t.cloud.calls();
     assert!(calls.iter().any(|c| c == "pin doc.txt"), "{calls:?}");
     assert_eq!(t.cloud.content(&id).unwrap(), b"local");
+}
+
+#[test]
+fn adopting_a_folder_waits_for_review() {
+    let t = setup();
+    t.cloud.put(ROOT, "same.txt", b"same");
+    t.cloud.put(ROOT, "differs.txt", b"cloud");
+    t.write("same.txt", "same");
+    t.write("differs.txt", "local");
+    t.write("only-here.txt", "x");
+    t.cloud.calls();
+    let r = t.sync();
+    assert!(r.held.as_deref().unwrap_or("").contains("first sync"), "{r:?}");
+    assert!(t.cloud.calls().is_empty(), "nothing done before review");
+    assert_eq!(t.read("differs.txt"), "local");
+    let o = PassOptions { confirm_first: true, ..Default::default() };
+    t.sync_opts(&o);
+    assert!(t.cloud.child(ROOT, "only-here.txt").is_some());
+    assert_eq!(t.read("differs.txt"), "cloud");
+    t.settled();
+}
+
+#[test]
+fn dry_run_changes_nothing() {
+    let t = setup();
+    let a = t.cloud.mkdir(ROOT, "A");
+    let f = t.cloud.put(&a, "f.txt", b"1");
+    t.cloud.put(ROOT, "g.txt", b"g");
+    t.sync();
+    t.cloud.edit(&f, b"2");
+    t.cloud.rename(&a, "A2");
+    t.write("new.txt", "n");
+    std::fs::remove_file(t.p("g.txt")).unwrap();
+    mirror::refresh(t.cloud.as_ref(), &t.eng.db, None).unwrap();
+    let before_base = t.eng.db.base_all("r1").unwrap();
+    t.cloud.calls();
+    let r = t.eng.pass(&PassOptions { dry_run: true, ..Default::default() }).unwrap();
+    assert!(t.cloud.calls().is_empty());
+    assert!(t.p("A/f.txt").exists() && !t.p("A2").exists());
+    let mut after_base = t.eng.db.base_all("r1").unwrap();
+    let mut bb = before_base.clone();
+    bb.sort_by(|x, y| x.path.cmp(&y.path));
+    after_base.sort_by(|x, y| x.path.cmp(&y.path));
+    assert_eq!(bb, after_base);
+    let plan = r.plan.join("\n");
+    assert!(plan.contains("move here A → A2"), "{plan}");
+    assert!(plan.contains("upload new.txt"), "{plan}");
+    assert!(plan.contains("Google Drive's trash: g.txt"), "{plan}");
+    // And the real pass does it.
+    t.sync();
+    assert!(t.p("A2/f.txt").exists());
+    t.settled();
 }

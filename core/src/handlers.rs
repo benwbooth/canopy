@@ -520,6 +520,21 @@ pub fn handle(s: &S, cmd: &str, req: &Value) -> Result<Value> {
             s.changed();
             Ok(Value::Null)
         }
+        "preview" => {
+            // What a pass would do now (nothing is changed): {root: [lines]}.
+            let a = s.account(str_arg(req, "account"))?;
+            let want = str_arg(req, "root");
+            let mut out = serde_json::Map::new();
+            let _g = a.cycle.lock();
+            let _ = crate::mirror::refresh(a.cloud.as_ref(), &a.db, None);
+            for r in a.cfg.read().roots.clone().into_iter().filter(|r| want.is_empty() || r.id == want) {
+                let eng = daemon::engine_for(s, &a, &r, false);
+                let rep = eng.pass(&crate::engine::PassOptions { dry_run: true, ..Default::default() })?;
+                let lines: Vec<String> = rep.plan.into_iter().filter(|l| !l.starts_with("matches already")).collect();
+                out.insert(r.id.clone(), json!({"name": r.name, "local": r.local, "plan": lines, "held": rep.held}));
+            }
+            Ok(Value::Object(out))
+        }
         "confirm" => {
             let a = s.account(str_arg(req, "account"))?;
             let root = str_arg(req, "root").to_string();

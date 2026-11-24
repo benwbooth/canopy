@@ -87,7 +87,19 @@ Item {
                                 onClicked: Async.call(iv.win.cn, k => iv.win.cn.chooseFolder(k, h.local), r => { if (r && r.folder) iv.win.api("locate_root", { account: h.account, root: h.root, to: r.folder }) })
                             }
                             PushButton {
-                                visible: !h.signin && h.message.indexOf("empty") >= 0
+                                visible: !h.signin && h.message.indexOf("first sync") >= 0
+                                primary: true; text: "Start Syncing"
+                                tip: "Go ahead: upload, download and keep both versions where they differ, as listed"
+                                onClicked: iv.win.api("confirm", { account: h.account, root: h.root, what: "first_sync" })
+                            }
+                            GButton {
+                                visible: !h.signin && h.root !== ""
+                                flat: false; text: "Review…"
+                                tip: "See every change syncing would make (nothing is done)"
+                                onClicked: iv.win.openPreview(h.account, h.root)
+                            }
+                            PushButton {
+                                visible: !h.signin && h.message.indexOf("is empty") >= 0
                                 destructive: true; text: "Yes, Delete Them in Google Drive"
                                 tip: "The files move to Google Drive's trash (kept 30 days)"
                                 onClicked: iv.win.api("confirm", { account: h.account, root: h.root, what: "empty_root" })

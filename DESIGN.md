@@ -245,7 +245,35 @@ and selection rules), a pass:
 6. Applies each action and records the new base row right after it
    succeeds. An interrupted pass therefore resumes cleanly.
 
-Safety:
+Safety (each has a test; tests/fuzz.rs runs thousands of random two-sided
+change sequences, with racing and stale metadata, and checks that no
+unsynced version is ever lost and both sides converge):
+- Before replacing or trashing anything in Drive, canopy asks Drive for the
+  file again: a version it hasn't seen is never overwritten or deleted.
+  New items go only into Drive folders checked to be live (not trashed),
+  and moves only apply when the item is still where canopy last saw it.
+- Choosing "keep this computer's version" pins the replaced Drive version
+  forever in its version history.
+- Before a local file is replaced, its content is checked against the last
+  synced version; a different one is kept as a conflict copy. Records made
+  within two seconds of a file's time are "racy" and compared by content
+  (git's racily-clean rule), so same-size edits in one tick aren't missed.
+- Conflict copies never overwrite anything (unique names, renameat2
+  NOREPLACE).
+- The first sync into a folder that already has files and Drive content is
+  held for review (counts, and the full plan via Review / `canopy
+  preview`, a dry run that changes nothing).
+- Downloads that don't fit on the disk (with 1 GB spare) are held.
+- Each item moves at most once per pass; a cycle in Drive's folder tree
+  can't hang a pass.
+- canopy's own changes go into the mirror at once; a first full listing
+  replaces the mirror.
+
+Recovery: there are no Drive snapshots. Drive keeps trash 30 days and
+binary-file versions about 30 days (Docs: full history). Locally, /home's
+hourly snapper snapshots hold every synced file's past versions.
+
+Earlier safety notes:
 - A missing root, a root on an unmounted filesystem, or an empty root that
   had files stops the pass with an Attention item.
 - Deletions only ever go to a trash (the system trash locally, Drive's

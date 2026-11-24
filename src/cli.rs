@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use std::io::BufRead;
 
 pub const COMMANDS: &[&str] = &[
-    "status", "pause", "resume", "sync", "account", "ignore-rules", "export-option", "conflict", "error", "selective-sync", "open-cloud", "share-link", "config", "quit", "start", "activity", "add-folder",
+    "status", "preview", "pause", "resume", "sync", "account", "ignore-rules", "export-option", "conflict", "error", "selective-sync", "open-cloud", "share-link", "config", "quit", "start", "activity", "add-folder",
 ];
 
 pub const USAGE: &str = "canopy: Google Drive sync
@@ -15,6 +15,7 @@ pub const USAGE: &str = "canopy: Google Drive sync
   canopy                         open the window
   canopy start                   start syncing in the background (canopyd)
   canopy status [-f FILE]        overall state, or one file's (synced, syncing...)
+  canopy preview [-a EMAIL]      what syncing would do now (changes nothing)
   canopy pause | resume          stop or continue syncing (every account)
   canopy sync                    look for changes now
   canopy activity [N]            the last N things canopy did
@@ -107,6 +108,21 @@ pub fn run(cmd: &str, mut args: Vec<String>) -> Result<()> {
             for t in v["transfers"].as_array().into_iter().flatten() {
                 let (d, n) = (t["done"].as_u64().unwrap_or(0), t["total"].as_u64().unwrap_or(0).max(1));
                 println!("  {} {} {}%", if t["up"].as_bool() == Some(true) { "↑" } else { "↓" }, t["path"].as_str().unwrap_or(""), d * 100 / n);
+            }
+        }
+        "preview" => {
+            let st = call("status", json!({}))?;
+            let a = pick(&st, &account)?;
+            let v = call("preview", json!({"account": a["id"]}))?;
+            for (_, r) in v.as_object().into_iter().flatten() {
+                let plan = r["plan"].as_array().cloned().unwrap_or_default();
+                println!("{} ({}): {}", r["name"].as_str().unwrap_or(""), r["local"].as_str().unwrap_or(""), if plan.is_empty() { "nothing to do".to_string() } else { format!("{} change(s)", plan.len()) });
+                if let Some(h) = r["held"].as_str() {
+                    println!("  held: {h}");
+                }
+                for l in plan {
+                    println!("  {}", l.as_str().unwrap_or(""));
+                }
             }
         }
         "pause" | "resume" => {

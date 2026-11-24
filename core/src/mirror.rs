@@ -28,6 +28,11 @@ pub fn refresh(cloud: &dyn Cloud, db: &Db, drive: Option<&str>) -> Result<Refres
         // nothing changed during the listing is missed.
         let start = cloud.start_token(drive)?;
         let items = cloud.list_all(drive)?;
+        // A full listing is the whole truth: drop anything noted before it
+        // (it may have been trashed since, and listings leave trash out).
+        if drive.is_none() {
+            db.clear_items()?;
+        }
         db.put_items(&items)?;
         db.set_token(key, &start)?;
         out.full = true;
