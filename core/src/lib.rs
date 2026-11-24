@@ -31,4 +31,4 @@ pub mod paths;
 pub mod throttle;
 //pub mod tray;
 pub mod trash;
-//pub mod watch;
+pub mod watch;
