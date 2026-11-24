@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Open in Google Drive
+NoDisplay=true
+Exec=canopy open-cloud %f
+Icon=canopy
+MimeType=application/vnd.canopy.link.doc;application/vnd.canopy.link.sheet;application/vnd.canopy.link.slides;application/vnd.canopy.link.draw;application/vnd.canopy.link.form;application/vnd.canopy.link.script;application/vnd.canopy.link.map;application/vnd.canopy.link.table;application/vnd.canopy.link.site;application/vnd.canopy.link.jam;application/vnd.canopy.link.link;

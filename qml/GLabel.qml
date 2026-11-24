@@ -1,6 +1,6 @@
 import QtQuick
 
-// All text in sheaf: native rendering, the system face at 13 pt.
+// All text in canopy: native rendering, the system face at 13 pt.
 Text {
     color: Theme.fg
     font.family: Theme.family

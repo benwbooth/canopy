@@ -349,6 +349,7 @@ fn add_account(s: &S, token: String) -> Result<Value> {
         daemon::start_account(s, cfg, d.clone(), Some(d))?;
     }
     s.save_accounts()?;
+    let _ = set_autostart(s.settings.read().start_at_login);
     s.changed();
     Ok(json!({"account": id, "email": about.email}))
 }
@@ -369,6 +370,20 @@ fn reexport(s: &S, a: &Arc<Acct>) -> Result<()> {
     drop(_g);
     let _ = a.tx.send(Trig::Now);
     s.changed();
+    Ok(())
+}
+
+/// Start at login: an XDG autostart entry (works under arbor/hearth and
+/// any other desktop); a systemd user unit, when installed, is left to the
+/// system configuration.
+pub fn set_autostart(on: bool) -> Result<()> {
+    let p = paths::config_home().join("autostart/canopy.desktop");
+    if on {
+        std::fs::create_dir_all(p.parent().unwrap())?;
+        std::fs::write(&p, "[Desktop Entry]\nType=Application\nName=Canopy\nComment=Google Drive sync\nExec=canopy start\nIcon=canopy\nNoDisplay=true\nX-GNOME-Autostart-enabled=true\n")?;
+    } else {
+        let _ = std::fs::remove_file(&p);
+    }
     Ok(())
 }
 
@@ -552,6 +567,7 @@ pub fn handle(s: &S, cmd: &str, req: &Value) -> Result<Value> {
             let new: Settings = serde_json::from_value(v)?;
             crate::throttle::UP.set_kib(new.upload_limit);
             crate::throttle::DOWN.set_kib(new.download_limit);
+            set_autostart(new.start_at_login)?;
             new.save()?;
             *s.settings.write() = new;
             s.changed();

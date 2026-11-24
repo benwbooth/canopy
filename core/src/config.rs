@@ -171,6 +171,8 @@ pub struct Settings {
     pub poll_seconds: u64,
     /// Window: "auto", "dark", "light".
     pub appearance: String,
+    /// Start syncing at login (an XDG autostart entry running `canopy start`).
+    pub start_at_login: bool,
 }
 
 impl Default for Settings {
@@ -188,6 +190,7 @@ impl Default for Settings {
             client_secret: String::new(),
             poll_seconds: 20,
             appearance: "auto".into(),
+            start_at_login: true,
         }
     }
 }

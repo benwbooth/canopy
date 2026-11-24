@@ -2,41 +2,31 @@ pragma Singleton
 import QtQuick
 
 // Every action with its shortcut (for menus, tooltips and the Shortcuts
-// page) and the help topics (the searchable Help window). Ctrl stands
-// where a Mac has ⌘.
+// page) and the help topics (the searchable Help window).
 QtObject {
     readonly property var shortcuts: [
-        { id: "overview", group: "Scanning", action: "Overview (a quick look at what's on the glass)", keys: ["Ctrl+Shift+P"] },
-        { id: "scan", group: "Scanning", action: "Scan", keys: ["Ctrl+Return"] },
-        { id: "stop", group: "Scanning", action: "Stop scanning", keys: ["Esc"] },
-        { id: "wholearea", group: "Scanning", action: "Scan the whole glass (clear the selection)", keys: ["Ctrl+Shift+A"] },
-        { id: "detect", group: "Scanning", action: "Select the document found on the overview", keys: ["Ctrl+D"] },
-        { id: "moreoptions", group: "Scanning", action: "More scanner options", keys: ["Ctrl+Shift+O"] },
-        { id: "refresh", group: "Scanning", action: "Look for scanners again", keys: ["F5"] },
+        { id: "activity", group: "Go", action: "Activity (what canopy did)", keys: ["Ctrl+1"] },
+        { id: "attention", group: "Go", action: "Needs attention (errors)", keys: ["Ctrl+2"] },
+        { id: "conflicts", group: "Go", action: "Conflicts", keys: ["Ctrl+3"] },
+        { id: "mydrive", group: "Go", action: "My Drive (choose what to sync)", keys: ["Ctrl+4"] },
+        { id: "folders", group: "Go", action: "Synced folders", keys: ["Ctrl+5"] },
+        { id: "search", group: "Go", action: "Search Google Drive", keys: ["Ctrl+F"] },
+        { id: "back", group: "Go", action: "Up one folder (in My Drive)", keys: ["Alt+Up", "Backspace"] },
 
-        { id: "rotleft", group: "Pages", action: "Rotate left", keys: ["Ctrl+L"] },
-        { id: "rotright", group: "Pages", action: "Rotate right", keys: ["Ctrl+R"] },
-        { id: "straighten", group: "Pages", action: "Straighten (fix a tilted page)", keys: ["Ctrl+T"] },
-        { id: "autocrop", group: "Pages", action: "Crop to the content", keys: ["Ctrl+K"] },
-        { id: "crop", group: "Pages", action: "Crop by hand (drag a box, then Crop)", keys: ["Ctrl+Shift+K"] },
-        { id: "moveup", group: "Pages", action: "Move page earlier", keys: ["Ctrl+Left"] },
-        { id: "movedown", group: "Pages", action: "Move page later", keys: ["Ctrl+Right"] },
-        { id: "delete", group: "Pages", action: "Delete the selected pages", keys: ["Delete", "Backspace"] },
-        { id: "selectall", group: "Pages", action: "Select all pages", keys: ["Ctrl+A"] },
-        { id: "openpage", group: "Pages", action: "Look at a page up close", keys: ["Return"] },
-        { id: "prevpage", group: "Pages", action: "Previous / next page", keys: ["Left", "Right"] },
-        { id: "backtoscanner", group: "Pages", action: "Back to the scanner", keys: ["Ctrl+1"] },
-        { id: "pagesview", group: "Pages", action: "Show the selected page", keys: ["Ctrl+2"] },
-        { id: "undo", group: "Pages", action: "Undo", keys: ["Ctrl+Z"] },
+        { id: "pause", group: "Sync", action: "Pause or resume syncing", keys: ["Ctrl+P"] },
+        { id: "syncnow", group: "Sync", action: "Look for changes now", keys: ["F5", "Ctrl+R"] },
+        { id: "progress", group: "Sync", action: "Show transfers in progress", keys: ["Ctrl+T"] },
+        { id: "addfolder", group: "Sync", action: "Sync a folder from this computer…", keys: ["Ctrl+Shift+N"] },
+        { id: "openbase", group: "Sync", action: "Open the Google Drive folder", keys: ["Ctrl+O"] },
 
-        { id: "save", group: "File", action: "Save…", keys: ["Ctrl+S"] },
-        { id: "startover", group: "File", action: "Start over (remove every page)", keys: ["Ctrl+Shift+N"] },
-        { id: "settings", group: "File", action: "Settings", keys: ["Ctrl+,"] },
-        { id: "sidebar", group: "File", action: "Show or hide the scanner list", keys: ["Ctrl+Alt+S"] },
-        { id: "close", group: "File", action: "Close the window", keys: ["Ctrl+W"] },
-        { id: "quit", group: "File", action: "Quit", keys: ["Ctrl+Q"] },
+        { id: "addaccount", group: "canopy", action: "Add a Google account…", keys: [] },
+        { id: "accountsettings", group: "canopy", action: "Account settings (Google Docs, conflicts, ignore rules)", keys: ["Ctrl+Shift+,"] },
+        { id: "settings", group: "canopy", action: "Settings", keys: ["Ctrl+,"] },
+        { id: "sidebar", group: "canopy", action: "Show or hide the sidebar", keys: ["Ctrl+Alt+S"] },
+        { id: "close", group: "canopy", action: "Close the window (syncing goes on)", keys: ["Ctrl+W"] },
+        { id: "quit", group: "canopy", action: "Quit canopy (stops syncing)", keys: ["Ctrl+Q"] },
 
-        { id: "help", group: "Help", action: "Sheaf Help", keys: ["F1"] },
+        { id: "help", group: "Help", action: "Canopy Help", keys: ["F1"] },
         { id: "shortcutlist", group: "Help", action: "Keyboard shortcuts", keys: ["Ctrl+/"] }
     ]
 
@@ -44,29 +34,30 @@ QtObject {
         for (const s of shortcuts) if (s.id === id) return s
         return null
     }
-    // The first shortcut of an action ("" none), for menus.
     function key(id) {
         const e = entry(id)
         return e && e.keys.length ? e.keys[0] : ""
     }
-    // "Rotate left (Ctrl+L)" for tooltips.
     function tip(text, id) {
         const k = key(id)
         return k ? text + "  (" + k + ")" : text
     }
 
     readonly property var topics: [
-        { title: "Scanning a page", body: "1. Pick your scanner in the list on the left.\n2. Put the page face down on the glass and click Overview: a quick, rough scan shows what's there.\n3. Drag a box over the part you want (or leave it, to scan the whole glass).\n4. Choose the kind of picture and the resolution on the right, then click Scan.\nThe page appears in the tray at the bottom. Scan more pages the same way; they all go into one document when you save." },
-        { title: "Scanning many pages with the document feeder", body: "If your scanner has a document feeder (ADF), choose it under Source on the right, put the pages in the feeder and click Scan. Sheaf scans every page until the feeder is empty.\nTo scan both sides of each sheet, choose the source that says Duplex, or turn on Both Sides when your scanner has it.\nAn overview can't be made from the feeder: it needs the flatbed." },
-        { title: "Choosing a resolution", body: "Resolution is how many dots per inch (dpi) are scanned.\n• 150 dpi: fine for reading on screen and emailing.\n• 300 dpi: the usual choice for documents and for text recognition.\n• 600 dpi or more: photos you want to enlarge or print, small print.\nHigher resolutions take longer and make bigger files." },
-        { title: "Kind of picture (colour, gray, text)", body: "Colour keeps colours (photos, forms with coloured stamps).\nGray is black and white with shades in between: good for most letters and receipts, and smaller than colour.\nText (line art) is pure black and white: the smallest files, crisp text, but photos turn into dots." },
-        { title: "Selecting part of the glass", body: "On the overview, drag to draw a box around what you want. Drag inside the box to move it, or drag its corners and edges to change its size.\nDetect Document draws the box around the document sheaf found on the overview.\nWhole Glass removes the box, so the whole glass is scanned.\nThe Size menu on the right has common paper sizes (A4, Letter…)." },
-        { title: "Fixing pages: rotate, straighten, crop", body: "Hover over a page in the tray for quick rotate and delete buttons, or select it and use the Page menu.\nStraighten turns a page that was put on the glass a little crooked so its lines of text are level.\nCrop to Content trims the empty border around what's on the page.\nCrop by Hand: open the page (double-click it), click Crop, drag a box and click Crop again.\nSheaf can straighten and crop every new page by itself: see Straighten and Crop on the right.\nEvery change can be undone with Undo (Ctrl+Z)." },
-        { title: "Putting pages in order", body: "Drag a page in the tray to where it should go, or select it and press Ctrl+Left / Ctrl+Right.\nTo delete pages, select them (Ctrl-click or Shift-click selects several) and press Delete." },
-        { title: "Saving", body: "Click Save… (Ctrl+S). Give the file a name, choose a folder and a format:\n• PDF: every page in one document. Turn on Searchable Text to recognise the words on the pages, so you can search and copy them.\n• PNG: a picture file per page, without any loss of quality.\n• JPEG: a smaller picture file per page (good for photos).\nAfter saving, sheaf shows the file in Grove (you can change this in Settings)." },
-        { title: "Searchable text (OCR)", body: "When you save a PDF with Searchable Text, sheaf reads the words on each page (text recognition, with tesseract) and puts them invisibly over the picture. You can then search the PDF, select and copy its text.\nIt works best at 300 dpi in gray or colour. The language to read is in Settings." },
-        { title: "My scanner isn't in the list", body: "• Make sure it's turned on and finished starting up.\n• USB scanners: check the cable; try another port.\n• Network scanners: the computer and the scanner must be on the same network. Most scanners from the last ten years work through AirScan (eSCL).\n• Click ↻ (or press F5) to look again; network scanners can take a few seconds to answer.\n• Some older scanners need a driver from their maker (a SANE backend) installed on the system." },
-        { title: "The scanner is busy or doesn't answer", body: "Only one app can use a scanner at a time: close other scanning apps. If a scan stopped half way, turn the scanner off and on, then pick it again in the list." },
-        { title: "More scanner options", body: "Scanner > More Options shows everything your scanner can be set to (brightness, contrast, sharpness, colour correction…). Which ones there are depends on the scanner. Hover over an option to see what it does. Sheaf remembers your choices for each scanner." }
+        { title: "What canopy does", body: "canopy keeps a folder on this computer and your Google Drive the same. Change, add or delete a file on either side and canopy does the same on the other side within seconds.\nYour files are in ~/Canopy/<your email>/My Drive (you can move it). canopy keeps syncing while its window is closed: the cloud icon in the menu bar shows what it's doing." },
+        { title: "Setting up Google sign-in (once)", body: "Google only lets apps it has checked use your whole Drive, so canopy signs in through a Google Cloud \"client\" of your own. It takes about five minutes, once:\n1. Go to console.cloud.google.com and create a project (any name, e.g. \"canopy\").\n2. APIs & Services › Library: find \"Google Drive API\" and click Enable.\n3. APIs & Services › OAuth consent screen (Google Auth Platform): choose External, fill in an app name and your email. Under Audience add your Google account as a test user, then click Publish app (In production) so your sign-in doesn't expire every 7 days. Google will warn that the app isn't verified: that's expected for your own client.\n4. Credentials › Create credentials › OAuth client ID › Application type \"Desktop app\". Copy the Client ID and Client secret.\n5. In canopy: Settings › Google sign-in, paste both, then Add Account.\nWhen you sign in, Google shows \"Google hasn't verified this app\": click Advanced › Go to (your app name). Tick every permission it asks for." },
+        { title: "Choosing what to sync (selective sync)", body: "Open My Drive in the sidebar. Every file and folder has a checkbox: ticked items are kept on this computer, unticked ones stay only in Google Drive (you can still see them here and open them on the web).\nUntick a folder you no longer need on this computer: canopy moves its local copy to the Trash and keeps it in Google Drive. Tick it again to bring it back.\nA half-filled box means some things inside are synced and some aren't." },
+        { title: "Syncing any folder (backup)", body: "Click + Sync a Folder (or File › Sync a Folder…) and pick a folder anywhere on this computer, for example Pictures or a project folder. canopy makes a folder of the same name in your Google Drive and keeps them in sync.\nChoose how:\n• Two-way: changes go both ways (the usual).\n• Back up to Google Drive: only this computer's changes go up; the cloud copy follows this folder (a backup).\n• Download only: the folder follows Google Drive; changes made here aren't uploaded.\nIn grove you can right-click a folder › Sync with Google Drive." },
+        { title: "Google Docs, Sheets and Slides", body: "Google's own files have no file to download, so canopy shows them one of two ways (Account settings › Google Docs):\n• As links (the usual): a small .gddoc / .gdsheet / .gdslides file that opens the document in your browser when you double-click it. Copying a link file in the folder makes a copy of the document in Google Drive.\n• Converted to Microsoft Office (.docx, .xlsx, .pptx) or OpenDocument (.odt, .ods, .odp): you can edit them in LibreOffice; when you save, canopy puts your changes back into the Google file, which stays a Google file.\nForms, scripts and maps are always links." },
+        { title: "Conflicts", body: "A conflict is a file changed in two places before canopy could sync it (for example on two computers while one was offline), or changed in one place and deleted in the other.\nBy default canopy keeps both: your version is renamed \"name (conflict computer date)\" and uploaded too, so nothing is lost. Account settings › Conflicts lets you choose instead to always keep this computer's version, Google Drive's, or to ask each time (they're then listed under Conflicts)." },
+        { title: "Deleted files", body: "Nothing canopy deletes is gone for good:\n• A file deleted in Google Drive moves to this computer's Trash (open it from grove's sidebar).\n• A file you delete here moves to Google Drive's trash (drive.google.com › Trash) for 30 days.\nIf the whole folder goes missing (an unplugged disk, a renamed folder), canopy stops and asks instead of deleting anything in the cloud." },
+        { title: "Ignore rules", body: "Account settings › Ignore Rules lists files canopy leaves alone, one rule per line (the same rules as .gitignore):\n• A name, like node_modules, matches files and folders with that name anywhere.\n• A path from the top of the folder, like Projects/build, matches just that.\n• *.iso matches every file ending in .iso; Videos/* everything inside Videos.\n• Start a line with ! to make an exception: !Videos/keep.mp4\nRules are case-sensitive. Editor lock and temporary files (~$doc, .~lock, *.swp, *.tmp) are always ignored. Things that become ignored stop syncing but aren't deleted anywhere." },
+        { title: "Sharing", body: "Right-click a file in grove › Google Drive › Share…, or use Share in My Drive. You can copy the link, let anyone with the link view (or comment, or edit), and invite people by email with a role. Removing someone takes their access away." },
+        { title: "Badges in grove", body: "grove shows each file's sync state on its icon: ✓ synced, ↻ syncing, ✕ couldn't sync (open canopy › Needs Attention to see why), ! a conflict, – ignored. Right-click a synced file for Google Drive actions: copy link, view on the web, share, star, remove from this computer." },
+        { title: "Pausing", body: "Click Pause in the toolbar (or the menu bar icon › Pause syncing) to stop syncing everything, for example on a slow connection. Changes made meanwhile are synced when you resume. Each account can also be paused on its own in its settings." },
+        { title: "Limits and the network", body: "Settings › Network: limit upload and download speeds, how many files transfer at once, and a proxy if your network needs one. canopy retries by itself when Google Drive is busy or the network drops; big uploads and downloads continue where they stopped." },
+        { title: "Something isn't syncing", body: "• Look at Needs Attention: every file canopy couldn't sync is there with the reason, and Retry.\n• Names Google Drive can't take, or files you have no permission to change, show up there too.\n• Symbolic links aren't synced (Google Drive can't hold them): sync the folder they point to instead.\n• Check the account isn't paused and that you're signed in (the sidebar shows a warning if not)." },
+        { title: "The command line", body: "canopy works without the window too. In a terminal:\n  canopy status            what's happening\n  canopy status -f FILE    one file's state\n  canopy pause / resume\n  canopy account add       sign in (add --paste on a machine without a browser)\n  canopy selective-sync    see and change what's synced\n  canopy error list, canopy conflict list\n  canopy --help            everything\ncanopyd (the part that syncs) can run as a systemd user service on a computer with no screen." },
+        { title: "Coming from Insync", body: "canopy uses the same link files as Insync (.gddoc, .gdsheet…). You can point canopy at your Insync folder: stop Insync, add your account in canopy, then in Account settings move the folder to where Insync kept it (e.g. ~/Insync/you@gmail.com/Google Drive). canopy matches the files that are already there by content instead of downloading them again." }
     ]
 }

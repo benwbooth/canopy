@@ -4,11 +4,11 @@ import QtQuick
 // Colours, type and sizes: macOS 26 ("Tahoe") Finder, matched to hearth's
 // Look spec (hearth README): 1 pt = 1.125 logical px, SF Pro or Inter at
 // 13 pt, 12 pt glass corners, accent selection. Follows hearth's light/dark
-// mode and accent when its settings exist, else sheaf's own setting.
+// mode and accent when its settings exist, else canopy's own setting.
 QtObject {
     id: t
 
-    // Set by Main.qml from sheaf's settings and hearth's appearance.
+    // Set by Main.qml from canopy's settings and hearth's appearance.
     property string mode: "auto"          // auto, dark, light
     property var hearth: ({})
     // hearth's Reduce motion: no gliding or extra animation.

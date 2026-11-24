@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Link files canopy writes for Google-format files (the same names and
+     JSON as Insync's, so an Insync folder can be adopted). -->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/vnd.canopy.link.doc">
+    <comment>Google Document</comment>
+    <sub-class-of type="application/json"/>
+    <generic-icon name="x-office-document"/>
+    <glob pattern="*.gddoc"/>
+  </mime-type>
+  <mime-type type="application/vnd.canopy.link.sheet">
+    <comment>Google Spreadsheet</comment>
+    <sub-class-of type="application/json"/>
+    <generic-icon name="x-office-spreadsheet"/>
+    <glob pattern="*.gdsheet"/>
+  </mime-type>
+  <mime-type type="application/vnd.canopy.link.slides">
+    <comment>Google Presentation</comment>
+    <sub-class-of type="application/json"/>
+    <generic-icon name="x-office-presentation"/>
+    <glob pattern="*.gdslides"/>
+  </mime-type>
+  <mime-type type="application/vnd.canopy.link.draw">
+    <comment>Google Drawing</comment>
+    <sub-class-of type="application/json"/>
+    <generic-icon name="x-office-drawing"/>
+    <glob pattern="*.gddraw"/>
+  </mime-type>
+  <mime-type type="application/vnd.canopy.link.form">
+    <comment>Google Form</comment>
+    <sub-class-of type="application/json"/>
+    <generic-icon name="text-html"/>
+    <glob pattern="*.gdform"/>
+  </mime-type>
+  <mime-type type="application/vnd.canopy.link.script">
+    <comment>Google Apps Script</comment>
+    <sub-class-of type="application/json"/>
+    <generic-icon name="text-html"/>
+    <glob pattern="*.gdscript"/>
+  </mime-type>
+  <mime-type type="application/vnd.canopy.link.map">
+    <comment>Google My Maps</comment>
+    <sub-class-of type="application/json"/>
+    <generic-icon name="text-html"/>
+    <glob pattern="*.gdmap"/>
+  </mime-type>
+  <mime-type type="application/vnd.canopy.link.table">
+    <comment>Google Fusion Table</comment>
+    <sub-class-of type="application/json"/>
+    <generic-icon name="text-html"/>
+    <glob pattern="*.gdtable"/>
+  </mime-type>
+  <mime-type type="application/vnd.canopy.link.site">
+    <comment>Google Site</comment>
+    <sub-class-of type="application/json"/>
+    <generic-icon name="text-html"/>
+    <glob pattern="*.gdsite"/>
+  </mime-type>
+  <mime-type type="application/vnd.canopy.link.jam">
+    <comment>Google Jamboard</comment>
+    <sub-class-of type="application/json"/>
+    <generic-icon name="text-html"/>
+    <glob pattern="*.gdjam"/>
+  </mime-type>
+  <mime-type type="application/vnd.canopy.link.link">
+    <comment>Google Drive shortcut</comment>
+    <sub-class-of type="application/json"/>
+    <generic-icon name="text-html"/>
+    <glob pattern="*.gdlink"/>
+  </mime-type>
+</mime-info>

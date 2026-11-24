@@ -1,0 +1,15 @@
+[Unit]
+Description=canopy: Google Drive sync
+After=graphical-session.target network-online.target
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/canopyd
+Restart=on-failure
+RestartSec=10
+# Syncing should never get in the way of the desktop.
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=graphical-session.target

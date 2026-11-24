@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Canopy
+GenericName=Google Drive Sync
+Comment=Keep folders in sync with Google Drive
+Exec=canopy
+Icon=canopy
+Categories=Network;FileTransfer;Utility;
+Keywords=google;drive;sync;cloud;backup;insync;
+StartupWMClass=canopy

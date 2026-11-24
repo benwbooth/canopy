@@ -1,11 +1,11 @@
 import QtQuick
 import QtQuick.Controls.Basic
 
-// Sheaf Help: searchable topics, and every keyboard shortcut.
+// Canopy Help: searchable topics, and every keyboard shortcut.
 Sheet {
     id: hw
     property int page: 0          // 0 topics, 1 shortcuts
-    title: "Sheaf Help"
+    title: "Canopy Help"
     width: Math.min(parent ? parent.width - 40 : 700, Math.round(620 * Theme.pt))
 
     function openAt(p) { page = p; search.text = ""; open(); search.forceActiveFocus() }
@@ -18,7 +18,7 @@ Sheet {
         width: parent.width
         spacing: 10
         Segmented {
-            model: [{ text: "Help", tip: "How to scan, fix and save pages" }, { text: "Keyboard Shortcuts", tip: "Every shortcut" }]
+            model: [{ text: "Help", tip: "How canopy syncs and how to set it up" }, { text: "Keyboard Shortcuts", tip: "Every shortcut" }]
             current: hw.page
             onPicked: i => hw.page = i
         }
