@@ -8,6 +8,7 @@ Item {
     property var win
     readonly property var acct: win.acct
     readonly property var roots: acct ? acct.roots || [] : []
+    readonly property string rootKey: roots.map(r => r.id).join("\n")
     readonly property var modes: [
         { text: "Two-Way", value: "two_way", tip: "Changes go both ways (the usual)" },
         { text: "Back Up", value: "local_to_cloud", tip: "Only this computer's changes go to Google Drive; the cloud copy follows this folder" },
@@ -39,12 +40,13 @@ Item {
         anchors.rightMargin: 16
         clip: true
         spacing: 10
-        model: fv.roots
+        model: fv.rootKey ? fv.rootKey.split("\n") : []
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        KineticWheel { flickable: list; notch: 120 }
         delegate: Rectangle {
             id: card
             required property var modelData
-            readonly property var r: modelData
+            readonly property var r: fv.roots.find(x => x.id === modelData) || ({ id: modelData, name: "", local: "", mode: "two_way", kind: "" })
             readonly property string held: ((fv.acct.state || {}).held || {})[r.id] || ""
             width: list.width
             height: col.implicitHeight + 24

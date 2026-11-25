@@ -21,6 +21,8 @@ Sheet {
     }
     BusyDots { running: pv.loading; visible: pv.loading }
     ListView {
+        id: kineticList
+        KineticWheel { flickable: kineticList; notch: 80 }
         width: parent.width
         height: Math.min(contentHeight, (pv.parent ? pv.parent.height : 700) - 260)
         clip: true

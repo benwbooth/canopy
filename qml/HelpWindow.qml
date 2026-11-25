@@ -32,6 +32,8 @@ Sheet {
         }
     }
     ListView {
+        id: kineticList
+        KineticWheel { flickable: kineticList; notch: 120 }
         width: parent.width
         height: Math.min(contentHeight, (hw.parent ? hw.parent.height : 700) - 220)
         clip: true

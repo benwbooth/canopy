@@ -82,11 +82,13 @@ Rectangle {
     }
 
     Flickable {
+        id: sideFlick
         anchors.fill: parent
         anchors.topMargin: 6
         contentHeight: col.implicitHeight + 20
         clip: true
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        KineticWheel { flickable: sideFlick; notch: Theme.sidebarRow * 2 }
         Column {
             id: col
             width: parent.width
@@ -96,10 +98,11 @@ Rectangle {
             Row_ { width: col.width; label: "Conflicts"; icon: "dialog-question|vcs-conflicting"; count: sb.win.conflictCount; alert: true; selected: sb.win.page === "conflicts"; tip: Help.tip("Files changed in two places: choose which version to keep", "conflicts"); onClicked: sb.win.go("conflicts") }
 
             Repeater {
-                model: sb.win.accounts
+                model: sb.win.accountIds
                 delegate: Column {
                     required property var modelData
-                    readonly property var a: modelData
+                    // Looked up by id: updates in place while syncing.
+                    readonly property var a: sb.win.accounts.find(x => x.id === modelData) || ({ id: modelData, email: "", roots: [], state: {} })
                     width: col.width
                     readonly property string phase: (a.state || {}).phase || ""
                     Header_ {

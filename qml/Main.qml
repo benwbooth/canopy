@@ -26,6 +26,13 @@ ApplicationWindow {
     // ---- state ----
     readonly property var status: { try { return JSON.parse(canopy.statusJson || "{}") } catch (e) { return {} } }
     readonly property var accounts: status.accounts || []
+    // Keys that change only when something structural does (string/bool
+    // properties notify only on a real change): menus and list rows hang on
+    // these, so a status update while syncing doesn't rebuild them.
+    readonly property string accountKey: accounts.map(a => a.id).join("\n")
+    readonly property var accountIds: accountKey ? accountKey.split("\n") : []
+    readonly property bool hasAccounts: accountKey !== ""
+    readonly property bool hasAcct: acct !== null
     readonly property string overall: status.state || (canopy.connected ? "" : "connecting")
     readonly property bool paused: status.paused === true
     property var settings: ({})
@@ -44,6 +51,7 @@ ApplicationWindow {
 
     Component.onCompleted: {
         try { Theme.hearth = JSON.parse(canopy.env("CANOPY_HEARTH") || "{}") || {} } catch (e) {}
+        Theme.wheelDebug = canopy.env("CANOPY_WHEEL_DEBUG") !== ""
         canopy.setIconTheme(Theme.dark)
         canopy.start()
         if (testing) testTimer.start()
@@ -134,6 +142,8 @@ ApplicationWindow {
         case "about": toast.show("Canopy " + (status.version || "") + ": Google Drive sync for Linux. Open source (MIT)."); break
         }
     }
+    // Same content as before (no reload, no rebuild).
+    function same(a, b) { return JSON.stringify(a) === JSON.stringify(b) }
     function mk(id, text, icon, enabled) {
         return { id: id, text: text, icon: icon, shortcut: Help.key(id), enabled: enabled !== false }
     }
@@ -142,28 +152,28 @@ ApplicationWindow {
             mk("about", "About Canopy", "help-about"),
             { separator: true },
             mk("settings", "Settings…", "preferences-system|configure"),
-            mk("accountsettings", "Account Settings…", "user-identity|preferences-desktop-user", acct !== null),
+            mk("accountsettings", "Account Settings…", "user-identity|preferences-desktop-user", hasAcct),
             mk("addaccount", "Add Google Account…", "list-add-user|contact-new"),
             { separator: true },
             mk("close", "Close Window", "window-close"),
             mk("quit", "Quit Canopy", "application-exit")
         ] },
         { title: "Sync", items: [
-            mk("pause", paused ? "Resume Syncing" : "Pause Syncing", paused ? "media-playback-start" : "media-playback-pause", accounts.length > 0),
-            mk("syncnow", "Look for Changes Now", "view-refresh", accounts.length > 0 && !paused),
+            mk("pause", paused ? "Resume Syncing" : "Pause Syncing", paused ? "media-playback-start" : "media-playback-pause", hasAccounts),
+            mk("syncnow", "Look for Changes Now", "view-refresh", hasAccounts && !paused),
             mk("progress", "Transfers…", "folder-download|download"),
             { separator: true },
-            mk("addfolder", "Sync a Folder…", "folder-new|folder-add", accounts.length > 0),
-            mk("openbase", "Open Google Drive Folder", "folder-open", acct !== null)
+            mk("addfolder", "Sync a Folder…", "folder-new|folder-add", hasAccounts),
+            mk("openbase", "Open Google Drive Folder", "folder-open", hasAcct)
         ] },
         { title: "Go", items: [
             mk("activity", "Activity", "view-history|document-open-recent"),
             mk("attention", "Needs Attention", "dialog-warning"),
             mk("conflicts", "Conflicts", "dialog-question|vcs-conflicting"),
             { separator: true },
-            mk("mydrive", "My Drive", "folder-cloud|folder-remote", acct !== null),
-            mk("folders", "Synced Folders", "folder-sync|folder", acct !== null),
-            mk("search", "Search", "edit-find|system-search", accounts.length > 0),
+            mk("mydrive", "My Drive", "folder-cloud|folder-remote", hasAcct),
+            mk("folders", "Synced Folders", "folder-sync|folder", hasAcct),
+            mk("search", "Search", "edit-find|system-search", hasAccounts),
             { separator: true },
             mk("sidebar", sidebarShown ? "Hide Sidebar" : "Show Sidebar", "sidebar-show|view-left-pane")
         ] },
@@ -399,6 +409,7 @@ ApplicationWindow {
                 else m[arg].open()
                 break
             }
+            case "newmenu": pageStack.openNewMenu(); break
             case "review": win.openPreview(win.acct.id, ""); win.testWait = 10; break
             case "close": for (const sh of [previewSheet, settingsSheet, accountSheet, signIn, shareSheet, addFolder, helpWindow, progress]) sh.close(); break
             }

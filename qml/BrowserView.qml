@@ -27,16 +27,17 @@ Item {
         if (searching) {
             if (!query.trim()) { items = []; return }
             loading = true
-            win.api("search", { text: query.trim() }, r => { bv.items = r || []; bv.loading = false }, e => { bv.loading = false; win.toast.show(e, [], true) })
+            win.api("search", { text: query.trim() }, r => { if (!win.same(bv.items, r || [])) bv.items = r || []; bv.loading = false }, e => { bv.loading = false; win.toast.show(e, [], true) })
             return
         }
         if (!account) return
-        loading = true
+        loading = items.length === 0
         const args = { account: account, section: section }
         if (stack.length) args.folder = stack[stack.length - 1].id
-        win.api("browse", args, r => { bv.items = r || []; bv.loading = false }, e => { bv.loading = false; win.toast.show(e, [], true) })
+        win.api("browse", args, r => { if (!win.same(bv.items, r || [])) bv.items = r || []; bv.loading = false }, e => { bv.loading = false; win.toast.show(e, [], true) })
     }
     function enter(it) { stack = stack.concat([{ id: it.id, name: it.name }]); reload() }
+    function openNewMenu() { newMenu.open() }
     function up() { if (stack.length) { stack = stack.slice(0, -1); reload() } }
     function openNamed(n) { const it = items.find(i => i.name === n && i.folder); if (it) enter(it) }
     function activate(it) {
@@ -111,23 +112,25 @@ Item {
                 iconName: "list-add|document-new"
                 flat: false
                 tip: "Make a new folder, Google Doc, Sheet or Slides here in Google Drive"
-                onClicked: newMenu.popup(newButton, 0, newButton.height + 4)
+                checked: newMenu.visible
+                onClicked: newMenu.toggle()
             }
             GButton { visible: !bv.searching; iconName: "view-refresh"; tip: Help.tip("Look again", "syncnow"); onClicked: bv.reload() }
         }
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.separator }
     }
-    Menu {
+    GlassMenu {
         id: newMenu
-        popupType: Popup.Item
-        Repeater {
-            model: [{ k: "folder", t: "Folder", i: "folder-new" }, { k: "document", t: "Google Doc", i: "x-office-document" }, { k: "spreadsheet", t: "Google Sheet", i: "x-office-spreadsheet" }, { k: "presentation", t: "Google Slides", i: "x-office-presentation" }]
-            delegate: MenuItem {
-                required property var modelData
-                text: modelData.t
-                icon.name: modelData.i
-                onTriggered: bv.win.askName("New " + modelData.t, modelData.k === "folder" ? "untitled folder" : "Untitled", name => bv.win.api("create", { account: bv.account, parent: bv.stack.length ? bv.stack[bv.stack.length - 1].id : "", name: name, kind: modelData.k }, it => { bv.reload(); if (it.google) bv.win.cn.openUrl(it.web) }))
-            }
+        anchorItem: newButton
+        model: [
+            { id: "folder", text: "Folder", icon: "folder-new|folder", tip: "A new folder in Google Drive, here" },
+            { id: "document", text: "Google Doc", icon: "x-office-document", tip: "A new Google Doc, opened in your browser" },
+            { id: "spreadsheet", text: "Google Sheet", icon: "x-office-spreadsheet", tip: "A new Google Sheet, opened in your browser" },
+            { id: "presentation", text: "Google Slides", icon: "x-office-presentation", tip: "A new Google Slides presentation, opened in your browser" }
+        ]
+        onTriggered: k => {
+            const label = ({ folder: "Folder", document: "Google Doc", spreadsheet: "Google Sheet", presentation: "Google Slides" })[k]
+            bv.win.askName("New " + label, k === "folder" ? "untitled folder" : "Untitled", name => bv.win.api("create", { account: bv.account, parent: bv.stack.length ? bv.stack[bv.stack.length - 1].id : "", name: name, kind: k }, it => { bv.reload(); if (it.google) bv.win.cn.openUrl(it.web) }))
         }
     }
 
@@ -155,6 +158,7 @@ Item {
         clip: true
         model: bv.items
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        KineticWheel { flickable: list; notch: (Theme.rowHeight + 8) * 2 }
         delegate: Rectangle {
             id: row
             required property var modelData
@@ -162,11 +166,14 @@ Item {
             readonly property var it: modelData
             width: list.width
             height: Theme.rowHeight + 8
-            color: rm.containsMouse ? Theme.hover : index % 2 ? Theme.rowAlt : "transparent"
+            color: rowHover.hovered ? Theme.hover : index % 2 ? Theme.rowAlt : "transparent"
+            // Hover of the whole row, its buttons included (a MouseArea's
+            // hover moves to the button under the pointer, which hid the
+            // buttons and made them flicker).
+            HoverHandler { id: rowHover }
             MouseArea {
                 id: rm
                 anchors.fill: parent
-                hoverEnabled: true
                 onDoubleClicked: bv.activate(row.it)
             }
             Row {
@@ -187,14 +194,16 @@ Item {
                 GIcon { name: bv.iconFor(row.it); size: 20; anchors.verticalCenter: parent.verticalCenter }
                 Item { width: 10; height: 1 }
                 GLabel {
-                    width: cols.nameW - (acts.visible ? acts.width : 0)
+                    width: cols.nameW - acts.width
                     text: row.it.name
                     anchors.verticalCenter: parent.verticalCenter
                 }
                 Row {
                     id: acts
-                    visible: rm.containsMouse || hovered
-                    property bool hovered: false
+                    // Always laid out (nothing moves); shown on hover.
+                    opacity: rowHover.hovered ? 1 : 0
+                    enabled: rowHover.hovered
+                    Behavior on opacity { NumberAnimation { duration: Theme.fast } }
                     spacing: 2
                     anchors.verticalCenter: parent.verticalCenter
                     GButton { visible: !!row.it.local; iconName: "folder-open"; implicitHeight: 24; tip: "Show on this computer"; onClicked: bv.win.cn.showInFiles(row.it.local) }

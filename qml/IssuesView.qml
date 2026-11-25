@@ -9,8 +9,11 @@ Item {
     property bool conflicts: false
     property var rows: []
     readonly property var shown: rows.filter(r => conflicts ? r.kind === "conflict" : r.kind !== "conflict")
-    // Folders canopy stopped (missing, emptied, mass delete): from status.
-    readonly property var held: {
+    // Folders canopy stopped (missing, emptied, mass delete): from status,
+    // kept as a string so it only changes when they do.
+    readonly property var held: heldKey ? JSON.parse(heldKey) : []
+    readonly property string heldKey: JSON.stringify(heldNow)
+    readonly property var heldNow: {
         const out = []
         if (conflicts) return out
         for (const a of win.accounts) {
@@ -25,7 +28,7 @@ Item {
     }
 
     onVisibleChanged: if (visible) reload()
-    function reload() { win.api("issues", {}, r => iv.rows = r || []) }
+    function reload() { win.api("issues", {}, r => { if (!win.same(iv.rows, r || [])) iv.rows = r || [] }) }
     function resolve(r, choice, always) {
         win.api("resolve", { account: r.account, root: r.root, path: r.path, choice: choice, always: always }, () => { iv.reload(); win.toast.show("Done: canopy syncs it now.") })
     }
@@ -117,6 +120,7 @@ Item {
             Item { width: 1; height: iv.held.length ? 4 : 0 }
         }
         model: iv.shown
+        KineticWheel { flickable: list; notch: 120 }
         delegate: Rectangle {
             id: card
             required property var modelData

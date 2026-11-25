@@ -13,6 +13,8 @@ QtObject {
     property var hearth: ({})
     // hearth's Reduce motion: no gliding or extra animation.
     readonly property bool reduceMotion: (hearth || {}).reduceMotion === true
+    // CANOPY_WHEEL_DEBUG=1 (set in Main.qml): log wheel events.
+    property bool wheelDebug: false
     // Toolbar glyph: the "-symbolic" form of each name first (one-colour
     // glyphs as in Finder's toolbar), then the names as given.
     function glyph(name) {

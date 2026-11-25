@@ -17,13 +17,31 @@ Item {
     ]
     readonly property var shown: filter === 0 ? rows : rows.filter(r => filters[filter].kinds.indexOf(r.kind) >= 0)
     ListModel { id: lm }
+    property int shownFilter: -1
+    function row(r) { return { key: r.account + "/" + r.id, at: r.at, kind: r.kind, path: r.path, detail: r.detail || "", account: r.account, root: r.root, dayText: day(r.at) } }
+    // New entries go in at the top; the rows already shown stay (no
+    // flicker, the scroll position holds).
     onShownChanged: {
-        lm.clear()
-        for (const r of shown) lm.append({ at: r.at, kind: r.kind, path: r.path, detail: r.detail || "", account: r.account, root: r.root, dayText: day(r.at) })
+        const keys = new Set()
+        for (let i = 0; i < lm.count; i++) keys.add(lm.get(i).key)
+        const incremental = shownFilter === filter && lm.count > 0 && shown.length >= lm.count && keys.has(shown[shown.length - 1] ? row(shown[Math.min(shown.length - 1, lm.count - 1)]).key : "")
+        if (!incremental) {
+            lm.clear()
+            for (const r of shown) lm.append(row(r))
+        } else {
+            let at = 0
+            for (const r of shown) {
+                const k = row(r).key
+                if (keys.has(k)) break
+                lm.insert(at++, row(r))
+            }
+            while (lm.count > shown.length) lm.remove(lm.count - 1)
+        }
+        shownFilter = filter
     }
 
     onVisibleChanged: if (visible) reload()
-    function reload() { win.api("activity", { limit: 400 }, r => av.rows = r || []) }
+    function reload() { win.api("activity", { limit: 400 }, r => { if (!win.same(av.rows, r || [])) av.rows = r || [] }) }
 
     function rootPath(r) {
         const a = win.accounts.find(x => x.id === r.account)
@@ -70,6 +88,7 @@ Item {
         clip: true
         model: lm
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        KineticWheel { flickable: list; notch: Math.round(44 * Theme.pt) * 2 }
         section.property: "dayText"
         section.delegate: Item {
             required property string section
@@ -83,7 +102,8 @@ Item {
             readonly property var r: model
             width: list.width
             height: Math.round(44 * Theme.pt)
-            Rectangle { anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 10; radius: Theme.radius; color: rm.containsMouse ? Theme.hover : "transparent" }
+            HoverHandler { id: rowHover }
+            Rectangle { anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 10; radius: Theme.radius; color: rowHover.hovered ? Theme.hover : "transparent" }
             GIcon { id: ic; x: 22; anchors.verticalCenter: parent.verticalCenter; name: av.kindIcon(row.r.kind); size: 20 }
             Column {
                 anchors.left: ic.right
@@ -100,12 +120,12 @@ Item {
                 anchors.right: parent.right
                 anchors.rightMargin: 18
                 anchors.verticalCenter: parent.verticalCenter
-                opacity: rm.containsMouse || hovered ? 1 : 0
+                opacity: rowHover.hovered ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: Theme.fast } }
                 iconName: "folder-open"
                 tip: "Show in its folder"
                 onClicked: { const p = av.rootPath(row.r); if (p) av.win.cn.showInFiles(p) }
             }
-            MouseArea { id: rm; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton; z: -1 }
         }
         GLabel {
             anchors.centerIn: parent

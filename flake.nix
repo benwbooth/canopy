@@ -119,7 +119,11 @@
             # system glibc and the binary can't load this nixpkgs' Qt).
             "CARGO_TARGET_${pkgs.stdenv.hostPlatform.rust.cargoEnvVarTarget}_LINKER" = "cc";
             shellHook = ''
-              ln -sfn ${qtEnv} .qt-env
+              # Only in canopy's own checkout (never in the folder a shell
+              # happened to start in).
+              if [ -f Cargo.toml ] && grep -q '^name = "canopy"' Cargo.toml; then
+                ln -sfn ${qtEnv} .qt-env
+              fi
               export NIX_LDFLAGS="''${NIX_LDFLAGS//"-rpath $out/lib"/}"
               export CANOPY_FONT_DIR=''${CANOPY_FONT_DIR:-${pkgs.inter}/share/fonts/truetype}
               export XDG_DATA_DIRS="${pkgs.whitesur-icon-theme}/share:''${XDG_DATA_DIRS:-}"

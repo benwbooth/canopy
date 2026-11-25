@@ -38,6 +38,8 @@ Popup {
             text: pp.win.paused ? "Syncing is paused." : "Uploads and downloads show up here while they run."
         }
         ListView {
+            id: kineticList
+            KineticWheel { flickable: kineticList; notch: 80 }
             width: parent.width
             height: Math.min(contentHeight, 320)
             clip: true

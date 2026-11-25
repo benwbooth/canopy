@@ -13,6 +13,7 @@ Item {
         if (search.visible) search.reload()
     }
     function browseUp() { browser.up() }
+    function openNewMenu() { browser.openNewMenu() }
     function openFolderNamed(n) { browser.openNamed(n) }
     function firstItemId() { const f = browser.items.find(i => !i.folder) || browser.items[0]; return f ? f.id : "" }
 
