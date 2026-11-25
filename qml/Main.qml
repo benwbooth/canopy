@@ -10,6 +10,9 @@ import Canopy
 // comes from canopyd; closing the window doesn't stop syncing.
 ApplicationWindow {
     id: win
+    // The toolbar is the title bar (the shared window chrome from
+    // hearth/shared/app-menus, as in all of Ben's apps).
+    flags: Qt.Window | Qt.FramelessWindowHint
     visible: true
     width: 1100
     height: 740
@@ -223,6 +226,17 @@ ApplicationWindow {
             height: Theme.toolbarHeight
             color: Theme.toolbar
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.separator }
+            // Drag to move, double-click to maximize, right-click for the
+            // window menu; minimize, maximize and close at the right end.
+            ChromeTitleArea { anchors.fill: parent; window: win; menuDark: Theme.dark; menuAccent: Theme.accent }
+            ChromeButtons {
+                id: winButtons
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                window: win
+                fg: Theme.fg
+                bg: Theme.toolbar
+            }
 
             Row {
                 anchors.left: parent.left
@@ -260,7 +274,7 @@ ApplicationWindow {
                 onTextChanged: if (!text && win.page === "search") win.go("activity")
             }
             Row {
-                anchors.right: parent.right
+                anchors.right: winButtons.left
                 anchors.rightMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 8
@@ -415,4 +429,7 @@ ApplicationWindow {
             }
         }
     }
+
+    // Resizing from the edges (no system frame).
+    ChromeResizeEdges { anchors.fill: parent; z: 10000; window: win }
 }
