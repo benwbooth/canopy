@@ -68,6 +68,7 @@ impl ffi::Canopy {
         }
         self.as_mut().rust_mut().started = true;
         let qt = self.qt_thread();
+        crate::single::attach(qt.clone());
         let pending = self.rust().pending.clone();
         std::thread::Builder::new()
             .name("canopyd events".into())
@@ -146,4 +147,14 @@ impl ffi::Canopy {
     pub fn grab_windows(&self, path: &QString) {
         ffi::canopy_grab_windows(path);
     }
+}
+
+/// Another `canopy` handed over (single.rs): its activation token lets the
+/// compositor give this window focus (Qt's Wayland requestActivate reads
+/// XDG_ACTIVATION_TOKEN), then QML raises the window.
+pub fn activate(s: Pin<&mut ffi::Canopy>, req: String) {
+    if let Some(t) = serde_json::from_str::<Value>(&req).ok().and_then(|v| v["token"].as_str().map(str::to_string)).filter(|t| !t.is_empty()) {
+        std::env::set_var("XDG_ACTIVATION_TOKEN", t);
+    }
+    s.activate_requested(qs(&req));
 }

@@ -26,7 +26,28 @@ ApplicationWindow {
     title: "Canopy"
     color: Theme.window
 
-    Canopy { id: canopy }
+    Canopy {
+        id: canopy
+        onActivateRequested: json => win.activateFrom(json)
+    }
+    // Another `canopy` was started (one window at a time): come forward, and
+    // open the sheet it asked for. Before the first status the window isn't
+    // shown yet; it comes up on its own then, the request kept till then.
+    property var queuedOpen: null
+    function activateFrom(json) {
+        let r = {}
+        try { r = JSON.parse(json) || {} } catch (e) {}
+        if (!loaded && !showAnyway) { if (r.share || r.add) queuedOpen = r; return }
+        if (!visible) show()
+        if (visibility === Window.Minimized) showNormal()
+        raise()
+        requestActivate()
+        openRequested(r)
+    }
+    function openRequested(r) {
+        if (r.share) shareSheet.openFor({ path: r.share })
+        else if (r.add) addFolder.openWith(r.add)
+    }
     // For the pages and sheets (files of their own can't see ids here).
     readonly property var cn: canopy
     readonly property alias toast: toast
@@ -79,6 +100,7 @@ ApplicationWindow {
         const add = canopy.env("CANOPY_OPEN_ADD")
         if (share) shareSheet.openFor({ path: share })
         else if (add) addFolder.openWith(add)
+        else if (queuedOpen) openRequested(queuedOpen)
         else if (status.accounts.length === 0 && !testing) signIn.open()
     }
 

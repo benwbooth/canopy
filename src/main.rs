@@ -11,6 +11,7 @@ mod bridge;
 mod cli;
 mod controller;
 mod desktop;
+mod single;
 
 use bridge::ffi;
 use cxx_qt_lib::QString;
@@ -57,6 +58,19 @@ fn main() {
             }
         }
         i += 1;
+    }
+    // One window at a time: a running canopy raises its window instead (and
+    // opens the sheet asked for here). Tests run their own window.
+    if std::env::var_os("CANOPY_SCREENSHOT").is_none() && std::env::var_os("CANOPY_TEST").is_none() {
+        let env = |k: &str| std::env::var(k).unwrap_or_default();
+        let request = serde_json::json!({
+            "share": env("CANOPY_OPEN_SHARE"),
+            "add": env("CANOPY_OPEN_ADD"),
+            "token": env("XDG_ACTIVATION_TOKEN"),
+        });
+        if !single::claim_or_forward(&request) {
+            return;
+        }
     }
     // hearth's light/dark mode and accent, so canopy matches the shell.
     let hearth = canopy_core::paths::config_home().join("hearth/settings.json");

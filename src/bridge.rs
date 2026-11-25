@@ -41,6 +41,9 @@ pub mod ffi {
         /// A live event from canopyd (transfer, activity, status...).
         #[qsignal]
         fn event(self: Pin<&mut Canopy>, json: QString);
+        /// Another `canopy` was started: raise the window ({share?, add?}).
+        #[qsignal]
+        fn activate_requested(self: Pin<&mut Canopy>, json: QString);
 
         /// Connect to canopyd (starting it if needed) and follow it.
         #[qinvokable]
