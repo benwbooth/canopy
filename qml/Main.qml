@@ -301,11 +301,13 @@ ApplicationWindow {
                     tip: Help.tip(win.paused ? "Start syncing again" : "Stop syncing for now; changes are synced when you resume", "pause")
                     onClicked: win.pauseResume()
                 }
-                GButton {
+                // The ⋮ menu button every one of Ben's apps shares.
+                MacMenuButton {
                     id: menuButton
-                    iconName: "overflow-menu-symbolic|view-more-symbolic|application-menu"
+                    dark: Theme.dark
+                    menu: appMenu
                     tip: "All menus (also in the menu bar at the top of the screen)"
-                    onClicked: appMenu.openBelow(menuButton)
+                    anchors.verticalCenter: parent.verticalCenter
                 }
                 GButton {
                     iconName: "help-contents|help-about"
@@ -431,6 +433,7 @@ ApplicationWindow {
                 break
             }
             case "newmenu": pageStack.openNewMenu(); break
+            case "appmenu": menuButton.toggle(); break
             case "review": win.openPreview(win.acct.id, ""); win.testWait = 10; break
             case "close": for (const sh of [previewSheet, settingsSheet, accountSheet, signIn, shareSheet, addFolder, helpWindow, progress]) sh.close(); break
             }
