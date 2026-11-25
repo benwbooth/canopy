@@ -456,6 +456,8 @@ ApplicationWindow {
             }
             case "newmenu": pageStack.openNewMenu(); break
             case "appmenu": menuButton.toggle(); break
+            case "helptopic": helpWindow.current = Number(arg); break
+            case "helppage": helpWindow.page = Number(arg); break
             case "review": win.openPreview(win.acct.id, ""); win.testWait = 10; break
             case "close": for (const sh of [previewSheet, settingsSheet, accountSheet, signIn, shareSheet, addFolder, helpWindow, progress]) sh.close(); break
             }
