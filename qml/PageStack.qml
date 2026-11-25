@@ -19,7 +19,7 @@ Item {
 
     EmptyState {
         anchors.fill: parent
-        visible: ps.win.accounts.length === 0
+        visible: ps.win.loaded && ps.win.accounts.length === 0
         win: ps.win
     }
     ActivityView { id: activity; anchors.fill: parent; win: ps.win; visible: ps.win.accounts.length > 0 && ps.win.page === "activity" }

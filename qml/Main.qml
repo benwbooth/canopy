@@ -13,7 +13,12 @@ ApplicationWindow {
     // The toolbar is the title bar (the shared window chrome from
     // hearth/shared/app-menus, as in all of Ben's apps).
     flags: Qt.Window | Qt.FramelessWindowHint
-    visible: true
+    // Shown once canopyd's first status is in, so the window never opens on
+    // a placeholder ("no account", "connecting") that a moment later turns
+    // into the real state. If canopyd can't be reached it shows anyway.
+    visible: loaded || showAnyway
+    property bool showAnyway: false
+    Timer { interval: 3000; running: !win.loaded; onTriggered: win.showAnyway = true }
     width: 1100
     height: 740
     minimumWidth: 760
@@ -29,6 +34,8 @@ ApplicationWindow {
     // ---- state ----
     readonly property var status: { try { return JSON.parse(canopy.statusJson || "{}") } catch (e) { return {} } }
     readonly property var accounts: status.accounts || []
+    // The first real status has arrived (before it, status is a placeholder).
+    readonly property bool loaded: status.accounts !== undefined
     // Keys that change only when something structural does (string/bool
     // properties notify only on a real change): menus and list rows hang on
     // these, so a status update while syncing doesn't rebuild them.
