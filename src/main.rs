@@ -1,6 +1,7 @@
 //! canopy: Google Drive sync for Linux.
 //!
 //!   canopy                     the window
+//!   canopy --background        the window process, window hidden (login)
 //!   canopy <command>           the command line (cli.rs; `canopy --help`)
 //!   canopy --share FILE        the window's Share sheet for a file
 //!   canopy --add-folder DIR    the window's "Sync this folder" sheet
@@ -40,6 +41,14 @@ fn main() {
                 std::env::set_var("CANOPY_OPEN_SHARE", abs());
                 i += 1;
             }
+            "--background" => {
+                // The window process without the window (login): canopyd
+                // too, if it isn't running.
+                std::env::set_var("CANOPY_BACKGROUND", "1");
+                std::thread::spawn(|| {
+                    let _ = canopy_core::api::Client::connect_or_start();
+                });
+            }
             "--add-folder" => {
                 std::env::set_var("CANOPY_OPEN_ADD", abs());
                 i += 1;
@@ -67,6 +76,7 @@ fn main() {
             "share": env("CANOPY_OPEN_SHARE"),
             "add": env("CANOPY_OPEN_ADD"),
             "token": env("XDG_ACTIVATION_TOKEN"),
+            "background": !env("CANOPY_BACKGROUND").is_empty(),
         });
         if !single::claim_or_forward(&request) {
             return;

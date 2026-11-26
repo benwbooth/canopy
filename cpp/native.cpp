@@ -80,7 +80,12 @@ void canopy_create_app()
     QGuiApplication::setApplicationVersion(QStringLiteral(CANOPY_VERSION));
     QGuiApplication::setOrganizationName(QStringLiteral("canopy"));
     QGuiApplication::setDesktopFileName(QStringLiteral("canopy"));
-    QGuiApplication::setWindowIcon(QIcon::fromTheme(QStringLiteral("canopy"), QIcon::fromTheme(QStringLiteral("folder-cloud"))));
+    // Closing the window hides it (Main.qml); only Quit ends the process.
+    QGuiApplication::setQuitOnLastWindowClosed(false);
+    // canopy's own icon, from its package (<prefix>/bin -> <prefix>/share):
+    // a theme lookup misses it in every theme before reaching hicolor.
+    const QString own = QCoreApplication::applicationDirPath() + QStringLiteral("/../share/icons/hicolor/scalable/apps/canopy.svg");
+    QGuiApplication::setWindowIcon(QFile::exists(own) ? QIcon(own) : QIcon::fromTheme(QStringLiteral("canopy"), QIcon::fromTheme(QStringLiteral("folder-cloud"))));
     // Inter (SF Pro's open relative) when SF Pro isn't installed: the
     // package hands its folder over in CANOPY_FONT_DIR, as grove does.
     const QString fontDir = QString::fromLocal8Bit(qgetenv("CANOPY_FONT_DIR"));

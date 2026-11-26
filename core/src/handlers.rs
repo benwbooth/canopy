@@ -392,14 +392,15 @@ fn reexport(s: &S, a: &Arc<Acct>) -> Result<()> {
     Ok(())
 }
 
-/// Start at login: an XDG autostart entry (works under arbor/hearth and
+/// Start at login: an XDG autostart entry running the window process hidden
+/// (it starts canopyd too), so opening canopy later is instant. Works under arbor/hearth and
 /// any other desktop); a systemd user unit, when installed, is left to the
 /// system configuration.
 pub fn set_autostart(on: bool) -> Result<()> {
     let p = paths::config_home().join("autostart/canopy.desktop");
     if on {
         std::fs::create_dir_all(p.parent().unwrap())?;
-        std::fs::write(&p, "[Desktop Entry]\nType=Application\nName=Canopy\nComment=Google Drive sync\nExec=canopy start\nIcon=canopy\nNoDisplay=true\nX-GNOME-Autostart-enabled=true\n")?;
+        std::fs::write(&p, "[Desktop Entry]\nType=Application\nName=Canopy\nComment=Google Drive sync\nExec=canopy --background\nIcon=canopy\nNoDisplay=true\nX-GNOME-Autostart-enabled=true\n")?;
     } else {
         let _ = std::fs::remove_file(&p);
     }

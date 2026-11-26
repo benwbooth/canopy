@@ -97,6 +97,16 @@ bool GlobalMenuBar::updateInPlace() {
     return true;
 }
 
+// "name|fallback|...": the first that the icon theme has. Handing Qt the
+// whole string looks up a name no theme has (then its dash-stripped
+// prefixes), in every size folder of every theme: tens of thousands of
+// file checks before the window shows.
+static QIcon themeIcon(const QString &names) {
+    for (const QString &n : names.split(QLatin1Char('|'), Qt::SkipEmptyParts))
+        if (QIcon::hasThemeIcon(n)) return QIcon::fromTheme(n);
+    return QIcon();
+}
+
 void GlobalMenuBar::apply(QPlatformMenuItem *it, const QVariantMap &item) {
     it->setText(item.value("text").toString());
     it->setEnabled(item.value("enabled", true).toBool());
@@ -105,7 +115,7 @@ void GlobalMenuBar::apply(QPlatformMenuItem *it, const QVariantMap &item) {
     it->setCheckable(checkable);
     it->setChecked(checkable && item.value("checked").toBool());
     const QString icon = item.value("icon").toString();
-    it->setIcon(icon.isEmpty() ? QIcon() : QIcon::fromTheme(icon));
+    it->setIcon(icon.isEmpty() ? QIcon() : themeIcon(icon));
 }
 
 void GlobalMenuBar::clear() {
@@ -139,7 +149,7 @@ void GlobalMenuBar::fill(QPlatformMenu *menu, const QVariantList &items) {
                     sub->setTag(reinterpret_cast<quintptr>(sub));
                     sub->setText(item.value("text").toString());
                     const QString subIcon = item.value("icon").toString();
-                    if (!subIcon.isEmpty()) sub->setIcon(QIcon::fromTheme(subIcon));
+                    if (!subIcon.isEmpty()) sub->setIcon(themeIcon(subIcon));
                     sub->setEnabled(true);
                     sub->setVisible(true);
                     fill(sub, item.value("items").toList());
@@ -178,7 +188,7 @@ void GlobalMenuBar::rebuild() {
         // The menu's own icon (shown by menu bars that draw title icons,
         // e.g. hearth): the dbusmenu export puts it on the title's item.
         const QString icon = menuDef.value("icon").toString();
-        if (!icon.isEmpty()) menu->setIcon(QIcon::fromTheme(icon));
+        if (!icon.isEmpty()) menu->setIcon(themeIcon(icon));
         menu->setEnabled(true);
         menu->setVisible(true);
         fill(menu, menuDef.value("items").toList());

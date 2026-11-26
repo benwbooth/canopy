@@ -58,6 +58,16 @@
             ln -sfn "$workDir/target" target
             runHook postBuild
           '';
+          # WhiteSur's themes alone, as the window's fallback icon themes.
+          # The package's own share/icons also has hicolor, an empty
+          # skeleton with no icon-theme.cache: Qt checks every one of its
+          # ~5000 size folders for each icon name it can't find.
+          whitesurIcons = pkgs.runCommand "canopy-whitesur-icons" { } ''
+            mkdir -p $out/share/icons
+            for t in WhiteSur WhiteSur-dark WhiteSur-light; do
+              ln -s ${pkgs.whitesur-icon-theme}/share/icons/$t $out/share/icons/$t
+            done
+          '';
           canopy = pkgs.rustPlatform.buildRustPackage {
             pname = "canopy";
             version = (pkgs.lib.importTOML ./Cargo.toml).package.version;
@@ -77,6 +87,9 @@
               install -Dm755 target/release/canopyd $out/bin/canopyd
               install -Dm644 icons/canopy.svg $out/share/icons/hicolor/scalable/apps/canopy.svg
               for f in icons/tray/*.svg; do install -Dm644 "$f" $out/share/icons/hicolor/scalable/status/$(basename "$f"); done
+              # A cache, so names not here cost a lookup, not a file check
+              # in every hicolor size folder (the window searches $out/share).
+              ${pkgs.gtk3}/bin/gtk-update-icon-cache -f -t $out/share/icons/hicolor
               install -Dm644 data/canopy.desktop $out/share/applications/canopy.desktop
               install -Dm644 data/canopy-open.desktop $out/share/applications/canopy-open.desktop
               install -Dm644 data/canopy-mime.xml $out/share/mime/packages/canopy.xml
@@ -89,7 +102,7 @@
             postFixup = ''
               wrapQtApp $out/bin/canopy \
                 --set-default CANOPY_FONT_DIR ${pkgs.inter}/share/fonts/truetype \
-                --suffix XDG_DATA_DIRS : ${pkgs.lib.concatMapStringsSep ":" (p: "${p}/share") [ pkgs.whitesur-icon-theme ]}
+                --suffix XDG_DATA_DIRS : ${whitesurIcons}/share
             '';
             meta = {
               description = "Google Drive sync for Linux, like Insync";

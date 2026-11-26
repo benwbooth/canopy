@@ -576,6 +576,9 @@ pub fn run() -> Result<()> {
             }
         }
     }
+    if s.settings.read().start_at_login && crate::paths::config_home().join("autostart/canopy.desktop").exists() {
+        let _ = crate::handlers::set_autostart(true);
+    }
     if std::env::var_os("CANOPY_DEMO").is_some() && s.accounts.read().is_empty() {
         demo(&s)?;
     }

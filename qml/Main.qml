@@ -16,7 +16,16 @@ ApplicationWindow {
     // Shown once canopyd's first status is in, so the window never opens on
     // a placeholder ("no account", "connecting") that a moment later turns
     // into the real state. If canopyd can't be reached it shows anyway.
-    visible: loaded || showAnyway
+    // Closing only hides the window: the process stays, so the tray and
+    // the launcher bring it back at once (Quit Canopy quits). At login it
+    // starts hidden (`canopy --background`).
+    visible: wanted && (loaded || showAnyway)
+    property bool wanted: canopy.env("CANOPY_BACKGROUND") === ""
+    onClosing: close => {
+        close.accepted = false
+        for (const sh of [previewSheet, settingsSheet, accountSheet, signIn, shareSheet, addFolder, progress]) sh.close()
+        wanted = false
+    }
     property bool showAnyway: false
     Timer { interval: 3000; running: !win.loaded; onTriggered: win.showAnyway = true }
     width: 1100
@@ -37,8 +46,9 @@ ApplicationWindow {
     function activateFrom(json) {
         let r = {}
         try { r = JSON.parse(json) || {} } catch (e) {}
+        if (r.background) return
+        wanted = true
         if (!loaded && !showAnyway) { if (r.share || r.add) queuedOpen = r; return }
-        if (!visible) show()
         if (visibility === Window.Minimized) showNormal()
         raise()
         requestActivate()

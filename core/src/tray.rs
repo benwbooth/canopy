@@ -35,9 +35,26 @@ fn dark_bar() -> bool {
     }
 }
 
+/// Show the window: the running window process (it stays after its window
+/// is closed) is asked over D-Bus, which is instant; otherwise a new one
+/// starts, in its own unit so restarting canopyd doesn't take it along (and
+/// leaves no zombie behind).
 fn open_window() {
-    let exe = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("canopy"))).filter(|p| p.exists()).unwrap_or_else(|| PathBuf::from("canopy"));
-    let _ = std::process::Command::new(exe).spawn();
+    std::thread::spawn(|| {
+        if let Ok(c) = zbus::blocking::Connection::session() {
+            let ok = c.call_method(Some("io.github.benwbooth.Canopy"), "/io/github/benwbooth/Canopy", Some("io.github.benwbooth.Canopy"), "Activate", &("{}",));
+            if ok.is_ok() {
+                return;
+            }
+        }
+        let exe = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("canopy"))).filter(|p| p.exists()).unwrap_or_else(|| PathBuf::from("canopy"));
+        let run = std::process::Command::new("systemd-run").args(["--user", "--quiet", "--collect", "--slice=app.slice", "--"]).arg(&exe).status();
+        if !run.is_ok_and(|s| s.success()) {
+            if let Ok(mut child) = std::process::Command::new(exe).spawn() {
+                let _ = child.wait();
+            }
+        }
+    });
 }
 
 /// Sign every signed-out account in again: an Internet Accounts account

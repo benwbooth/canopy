@@ -13,6 +13,7 @@ pub const COMMANDS: &[&str] = &[
 pub const USAGE: &str = "canopy: Google Drive sync
 
   canopy                         open the window
+  canopy --background            start hidden (at login), so opening is instant
   canopy start                   start syncing in the background (canopyd)
   canopy status [-f FILE]        overall state, or one file's (synced, syncing...)
   canopy preview [-a EMAIL]      what syncing would do now (changes nothing)
