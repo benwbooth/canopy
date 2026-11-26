@@ -232,7 +232,10 @@ pub fn start(s: &S) {
         return;
     }
     let t = CanopyTray { s: Arc::downgrade(s) };
-    match t.spawn() {
+    // canopyd starts at login, often before hearth's bar hosts tray icons:
+    // don't give up when there's no StatusNotifierWatcher yet, register
+    // when it appears (and again whenever the bar restarts).
+    match t.assume_sni_available(true).spawn() {
         Ok(h) => {
             *s.tray.lock() = Some(Box::new(move || {
                 // Re-reads icon, tooltip and menu.
