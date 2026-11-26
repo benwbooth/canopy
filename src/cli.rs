@@ -282,7 +282,7 @@ pub fn run(cmd: &str, mut args: Vec<String>) -> Result<()> {
                 "two_way"
             };
             call("add_folder", json!({"account": a["id"], "local": local, "mode": mode}))?;
-            println!("Syncing {local} with Google Drive.");
+            println!("Syncing {local}.");
         }
         "open-cloud" | "share-link" => {
             let p = abs(args.first().ok_or_else(|| anyhow!("which file?"))?);

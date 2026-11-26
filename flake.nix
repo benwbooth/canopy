@@ -108,7 +108,7 @@
                 --suffix XDG_DATA_DIRS : ${whitesurIcons}/share
             '';
             meta = {
-              description = "Google Drive sync for Linux, like Insync";
+              description = "Cloud sync for Linux (Google Drive, plus any rclone cloud), like Insync";
               homepage = "https://github.com/benwbooth/canopy";
               license = pkgs.lib.licenses.mit;
               mainProgram = "canopy";

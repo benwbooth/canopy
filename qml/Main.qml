@@ -181,7 +181,7 @@ ApplicationWindow {
         case "quit": api("quit", {}, () => Qt.quit(), () => Qt.quit()); break
         case "help": helpWindow.openAt(0); break
         case "shortcutlist": helpWindow.openAt(1); break
-        case "about": toast.show("Canopy " + (status.version || "") + ": Google Drive sync for Linux. Open source (MIT)."); break
+        case "about": toast.show("Canopy " + (status.version || "") + ": cloud sync for Linux (Google Drive, and Dropbox, OneDrive, S3… through rclone). Open source (MIT)."); break
         }
     }
     // Same content as before (no reload, no rebuild).
@@ -206,7 +206,7 @@ ApplicationWindow {
             mk("progress", "Transfers…", "folder-download|download"),
             { separator: true },
             mk("addfolder", "Sync a Folder…", "folder-new|folder-add", hasAccounts),
-            mk("openbase", "Open Google Drive Folder", "folder-open", hasAcct)
+            mk("openbase", "Open Synced Folder", "folder-open", hasAcct)
         ] },
         { title: "Go", items: [
             mk("activity", "Activity", "view-history|document-open-recent"),
@@ -314,7 +314,7 @@ ApplicationWindow {
                 width: Math.min(Math.round(300 * Theme.pt), parent.width - 640)
                 visible: win.accounts.length > 0 && width > 120
                 iconName: "edit-find|system-search"
-                placeholderText: win.accounts.some(a => a.kind === "rclone") ? "Search" : "Search Google Drive"
+                placeholderText: win.accounts.length && win.accounts.every(a => a.kind !== "rclone") ? "Search Google Drive" : "Search"
                 clearable: true
                 tip: Help.tip("Find files by name or by the words in them, in every account", "search")
                 onAccepted: if (text.trim()) win.go("search")
@@ -412,9 +412,9 @@ ApplicationWindow {
     }
     function subline() {
         if (!canopy.connected) return "Connecting to the sync service"
-        if (overall === "empty") return "Add a Google account to start"
+        if (overall === "empty") return "Add a cloud account to start"
         if (overall === "offline") return "Waiting for the network; nothing is lost"
-        if (overall === "signed_out") return "Google access stopped: sign in again"
+        if (overall === "signed_out") return "Cloud access stopped: sign in again"
         if (overall === "error") return (errorCount + conflictCount) + " item(s) to look at"
         const last = accounts.reduce((m, a) => Math.max(m, (a.state || {}).last_sync || 0), 0)
         return last ? "Checked " + ago(last) : accounts.map(a => a.email).join(", ")

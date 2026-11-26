@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
 Name=Canopy
-GenericName=Google Drive Sync
-Comment=Keep folders in sync with Google Drive
+GenericName=Cloud Sync
+Comment=Keep folders in sync with Google Drive, Dropbox, OneDrive and other clouds
 Exec=canopy
 Icon=canopy
 Categories=Network;FileTransfer;Utility;

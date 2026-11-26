@@ -13,14 +13,14 @@ Item {
             source: Theme.iconUrl("canopy|folder-cloud")
             width: 96; height: 96; sourceSize.width: 96; sourceSize.height: 96
         }
-        GLabel { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "Google Drive on this computer"; font.pixelSize: Theme.large; font.weight: Font.DemiBold }
+        GLabel { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "Your clouds on this computer"; font.pixelSize: Theme.large; font.weight: Font.DemiBold }
         GLabel {
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap
             elide: Text.ElideNone
             color: Theme.fgSecondary
-            text: "canopy keeps a folder here and your Google Drive the same, both ways, as you work. Choose which folders to keep on this computer, sync any other folder, and open Google Docs from your files."
+            text: "canopy keeps a folder here and your cloud the same, both ways, as you work: Google Drive, or Dropbox, OneDrive, Box, S3, SFTP, WebDAV and more. No mounting: the files are really on this computer."
         }
         Row {
             anchors.horizontalCenter: parent.horizontalCenter

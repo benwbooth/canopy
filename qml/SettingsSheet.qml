@@ -46,12 +46,12 @@ Sheet {
         spacing: 10
         Line { label: "Start canopy when you log in"; help: "Syncing starts in the background (the window stays closed)."; GSwitch { checked: ss.s.start_at_login !== false; tip: "Start syncing at login"; onToggled: ss.put("start_at_login", checked) } }
         Line { label: "Notifications"; help: "Tell me about conflicts, errors and paused folders."; GSwitch { checked: ss.s.notifications !== false; tip: "Show notifications"; onToggled: ss.put("notifications", checked) } }
-        Line { label: "Warn about symbolic links"; help: "Links can't be stored in Google Drive; canopy lists them once under Needs Attention."; GSwitch { checked: ss.s.symlink_warnings !== false; tip: "Show symbolic link warnings"; onToggled: ss.put("symlink_warnings", checked) } }
+        Line { label: "Warn about symbolic links"; help: "Clouds can't store links; canopy lists them once under Needs Attention."; GSwitch { checked: ss.s.symlink_warnings !== false; tip: "Show symbolic link warnings"; onToggled: ss.put("symlink_warnings", checked) } }
         Line {
             label: "Deletions made while canopy wasn't running"
-            help: "Delete in Google Drive too, or only stop syncing those files (safer when the folder is shared with another system, e.g. dual boot)."
+            help: "Delete in the cloud too, or only stop syncing those files (safer when the folder is shared with another system, e.g. dual boot)."
             GCombo {
-                model: ["Delete in Google Drive", "Only stop syncing them"]
+                model: ["Delete in the cloud too", "Only stop syncing them"]
                 currentIndex: ss.s.sync_offline_deletions === false ? 1 : 0
                 tip: "What a deletion made while canopy was off means"
                 onActivated: i => ss.put("sync_offline_deletions", i === 0)
@@ -84,11 +84,11 @@ Sheet {
         }
         Line {
             label: "Files transferred at once"
-            help: "More is faster on a fast connection; Google may slow down very many small files."
+            help: "More is faster on a fast connection; clouds may slow down very many small files."
             GCombo { model: ["1", "2", "4", "6", "8", "12", "16"]; currentIndex: Math.max(0, model.indexOf(String(ss.s.transfers || 4))); tip: "Parallel transfers"; onActivated: i => ss.put("transfers", parseInt(model[i])) }
         }
         Line {
-            label: "Check Google Drive for changes every"
+            label: "Check the cloud for changes every"
             help: "How quickly changes made elsewhere show up here."
             GCombo { model: ["10 seconds", "20 seconds", "1 minute", "5 minutes"]; readonly property var secs: [10, 20, 60, 300]; currentIndex: Math.max(0, secs.indexOf(ss.s.poll_seconds || 20)); tip: "Polling interval"; onActivated: i => ss.put("poll_seconds", secs[i]) }
         }

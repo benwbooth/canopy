@@ -53,7 +53,7 @@ Sheet {
     property var hearth: ({ available: false })
     property bool own: false               // canopy's own sign-in instead
     readonly property bool useHearth: hearth.available === true && !own
-    title: google ? "Add a Google Account" : "Add Another Cloud"
+    title: "Add an Account"
     width: Math.min(parent ? parent.width - 40 : 560, Math.round(520 * Theme.pt))
     onOpened: { waiting = false; pasting = false; error = ""; login = ""; url = ""; own = false; loadHearth(); loadRemotes() }
     function loadHearth() { win.api("hearth_accounts", {}, r => si.hearth = r || { available: false }, () => si.hearth = { available: false }) }
@@ -111,7 +111,7 @@ Sheet {
             color: Theme.fgSecondary
             text: si.remotes.available === false
                   ? "Other clouds go through rclone, which isn't installed."
-                  : "canopy keeps a folder in ~/Canopy and the cloud the same, both ways, like Google Drive (no mounting: the files are really here). " + ((si.remotes.remotes || []).length ? "Pick one of your cloud drives, or add another:" : "First add the cloud drive (once, for all your apps): click Add a Cloud Drive below, pick the service and sign in. It shows up here by itself.")
+                  : "canopy keeps a folder in ~/Canopy and the cloud the same, both ways (no mounting: the files are really here). " + ((si.remotes.remotes || []).length ? "Pick one of your cloud drives, or add another:" : "First add the cloud drive (once, for all your apps): click Add a Cloud Drive below, pick the service and sign in. It shows up here by itself.")
         }
         Repeater {
             model: si.remotes.remotes || []
