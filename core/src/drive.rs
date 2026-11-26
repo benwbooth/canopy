@@ -105,7 +105,7 @@ impl std::fmt::Display for HttpError {
 impl std::error::Error for HttpError {}
 
 pub fn is_offline(e: &anyhow::Error) -> bool {
-    e.chain().any(|c| c.downcast_ref::<ureq::Transport>().is_some() || c.to_string().contains("Network Error"))
+    e.chain().any(|c| c.downcast_ref::<ureq::Transport>().is_some() || c.downcast_ref::<crate::rclone::Offline>().is_some() || c.to_string().contains("Network Error"))
 }
 
 pub fn is_auth_error(e: &anyhow::Error) -> bool {

@@ -6,8 +6,9 @@
 //! - `db`: the last state both sides agreed on ("base"), per root.
 //! - `engine`: compares local, cloud and base three ways for each path and
 //!   plans uploads, downloads, moves, deletions and conflicts.
-//! - `cloud`: the Drive operations the engine needs, as a trait (`drive`
-//!   is Google's REST API; `fake` is an in-memory Drive for tests).
+//! - `cloud`: the operations the engine needs, as a trait (`drive` is
+//!   Google's REST API; `rclone` any of rclone's services; `fake` is an
+//!   in-memory Drive for tests).
 //!
 //! The daemon (`canopyd`) runs one engine per sync root, watches the disk
 //! with inotify, polls the changes feed, serves a unix socket (the window,
@@ -30,6 +31,7 @@ pub mod ignore;
 pub mod local;
 pub mod mirror;
 pub mod paths;
+pub mod rclone;
 pub mod throttle;
 pub mod tray;
 pub mod trash;

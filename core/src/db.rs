@@ -67,6 +67,12 @@ impl Db {
         Self::init(c)
     }
 
+    /// Direct access, for tables a cloud keeps of its own (rclone's path
+    /// index).
+    pub fn with<R>(&self, f: impl FnOnce(&Connection) -> Result<R>) -> Result<R> {
+        f(&self.c.lock())
+    }
+
     pub fn memory() -> Result<Db> {
         Self::init(Connection::open_in_memory()?)
     }
