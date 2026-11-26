@@ -173,7 +173,7 @@ ApplicationWindow {
         case "progress": progress.open(); break
         case "addfolder": addFolder.openWith(""); break
         case "openbase": openBase(); break
-        case "addaccount": signIn.open(); break
+        case "addaccount": addAccount(0); break
         case "accountsettings": if (acct) accountSheet.openFor(acct.id); break
         case "settings": settingsSheet.open(); break
         case "sidebar": sidebarShown = !sidebarShown; break
@@ -195,7 +195,7 @@ ApplicationWindow {
             { separator: true },
             mk("settings", "Settings…", "preferences-system|configure"),
             mk("accountsettings", "Account Settings…", "user-identity|preferences-desktop-user", hasAcct),
-            mk("addaccount", "Add Google Account…", "list-add-user|contact-new"),
+            mk("addaccount", "Add Account…", "list-add-user|contact-new"),
             { separator: true },
             mk("close", "Close Window", "window-close"),
             mk("quit", "Quit Canopy", "application-exit")
@@ -314,7 +314,7 @@ ApplicationWindow {
                 width: Math.min(Math.round(300 * Theme.pt), parent.width - 640)
                 visible: win.accounts.length > 0 && width > 120
                 iconName: "edit-find|system-search"
-                placeholderText: "Search Google Drive"
+                placeholderText: win.accounts.some(a => a.kind === "rclone") ? "Search" : "Search Google Drive"
                 clearable: true
                 tip: Help.tip("Find files by name or by the words in them, in every account", "search")
                 onAccepted: if (text.trim()) win.go("search")
@@ -440,6 +440,13 @@ ApplicationWindow {
     SettingsSheet { id: settingsSheet; win: win }
     AccountSheet { id: accountSheet; win: win }
     SignInSheet { id: signIn; win: win }
+    // An account's cloud in words: "Google Drive", or the rclone cloud's
+    // name ("Dropbox"); its name in lists; where its deletions go.
+    function cloudName(id) { const a = accounts.find(x => x.id === id); return a && a.kind === "rclone" ? (a.name || "the cloud") : "Google Drive" }
+    function accountLabel(a) { return a && a.kind === "rclone" ? (a.name || a.email) : (a ? a.email : "") }
+    function trashName(id) { const a = accounts.find(x => x.id === id); return a && a.kind === "rclone" ? (a.trash_label || "the cloud's trash") : "Google Drive's trash (kept 30 days)" }
+    // Add Account: 0 Google, 1 another cloud (rclone).
+    function addAccount(tab) { signIn.tab = tab; signIn.open() }
     ShareSheet { id: shareSheet; win: win }
     AddFolderSheet { id: addFolder; win: win }
     ConfirmSheet { id: confirm }
@@ -486,6 +493,7 @@ ApplicationWindow {
             }
             case "newmenu": pageStack.openNewMenu(); break
             case "appmenu": menuButton.toggle(); break
+            case "addcloud": addAccount(1); break
             case "helptopic": helpWindow.current = Number(arg); break
             case "helppage": helpWindow.page = Number(arg); break
             case "review": win.openPreview(win.acct.id, ""); win.testWait = 10; break

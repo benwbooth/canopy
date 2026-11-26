@@ -9,7 +9,7 @@ Item {
     property int filter: 0
     readonly property var filters: [
         { text: "All", kinds: [] , tip: "Everything" },
-        { text: "Uploads", kinds: ["upload", "edit"], tip: "Files sent to Google Drive" },
+        { text: "Uploads", kinds: ["upload", "edit"], tip: "Files sent to the cloud" },
         { text: "Downloads", kinds: ["download", "add"], tip: "Files brought to this computer" },
         { text: "Moves", kinds: ["move", "rename"], tip: "Renamed or moved files" },
         { text: "Deletions", kinds: ["delete", "local_delete", "unsync"], tip: "Files moved to a trash or removed from this computer" },
@@ -53,9 +53,18 @@ Item {
                   move: "go-next|document-send", rename: "edit-rename|document-edit", delete: "user-trash|edit-delete", local_delete: "user-trash|edit-delete",
                   unsync: "list-remove|edit-delete", conflict: "dialog-warning", share: "emblem-shared|document-share", ignore: "dialog-cancel|action-unavailable" })[k] || "dialog-information"
     }
-    function kindText(k) {
+    // Where a top-level item is: its folder's name ("My Drive", "Dropbox"),
+    // with the account when there are several.
+    function topName(r) {
+        const a = win.accounts.find(x => x.id === r.account)
+        const root = a ? (a.roots || []).find(x => x.id === r.root) : null
+        const name = root ? root.name : "My Drive"
+        if (win.accounts.length < 2 || !a) return name
+        return a.kind === "rclone" ? name : name + " (" + a.email + ")"
+    }
+    function kindText(k, r) {
         return ({ upload: "Uploaded", edit: "Uploaded changes", download: "Downloaded", add: "Added", move: "Moved", rename: "Renamed",
-                  delete: "Deleted in Google Drive", local_delete: "Moved to the Trash here", unsync: "Removed from this computer",
+                  delete: "Deleted in " + win.cloudName(r ? r.account : ""), local_delete: "Moved to the Trash here", unsync: "Removed from this computer",
                   conflict: "Conflict", share: "Sharing changed", ignore: "Ignored" })[k] || k
     }
     function day(t) {
@@ -112,7 +121,7 @@ Item {
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
                 GLabel { width: parent.width; text: row.r.path.split("/").pop() || row.r.path }
-                GLabel { width: parent.width; font.pixelSize: Theme.small; color: Theme.fgSecondary; text: av.kindText(row.r.kind) + (row.r.detail ? " · " + row.r.detail : "") + " · " + (row.r.path.indexOf("/") >= 0 ? row.r.path.substring(0, row.r.path.lastIndexOf("/")) : (win.accounts.length > 1 ? row.r.account : "My Drive")) }
+                GLabel { width: parent.width; font.pixelSize: Theme.small; color: Theme.fgSecondary; text: av.kindText(row.r.kind, row.r) + (row.r.detail ? " · " + row.r.detail : "") + " · " + (row.r.path.indexOf("/") >= 0 ? row.r.path.substring(0, row.r.path.lastIndexOf("/")) : av.topName(row.r)) }
             }
             GLabel { id: when; anchors.right: show.left; anchors.rightMargin: 8; anchors.verticalCenter: parent.verticalCenter; text: new Date(row.r.at * 1000).toLocaleTimeString(Qt.locale(), "HH:mm"); color: Theme.fgSecondary; font.pixelSize: Theme.small }
             GButton {

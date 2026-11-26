@@ -103,14 +103,14 @@ Item {
                             }
                             PushButton {
                                 visible: !h.signin && h.message.indexOf("is empty") >= 0
-                                destructive: true; text: "Yes, Delete Them in Google Drive"
-                                tip: "The files move to Google Drive's trash (kept 30 days)"
+                                destructive: true; text: "Yes, Delete Them in " + iv.win.cloudName(h.account)
+                                tip: "The files move to " + iv.win.trashName(h.account)
                                 onClicked: iv.win.api("confirm", { account: h.account, root: h.root, what: "empty_root" })
                             }
                             PushButton {
                                 visible: !h.signin && h.message.indexOf("would be deleted") >= 0
                                 destructive: true; text: "Delete Them"
-                                tip: "They move to Google Drive's trash (kept 30 days)"
+                                tip: "They move to " + iv.win.trashName(h.account)
                                 onClicked: iv.win.api("confirm", { account: h.account, root: h.root, what: "mass_delete" })
                             }
                         }
@@ -156,8 +156,8 @@ Item {
                     Row {
                         spacing: 8
                         PushButton { primary: true; text: "Keep Both"; tip: "This computer's version is renamed “(conflict …)” and both are kept everywhere"; onClicked: iv.resolve(card.r, "keep_both", always.checked) }
-                        PushButton { text: card.r.sub === "local_delete_cloud_edit" ? "Delete It" : "Keep This Computer's"; tip: card.r.sub === "local_delete_cloud_edit" ? "Delete it in Google Drive too (it goes to Google Drive's trash)" : "Upload this computer's version over Google Drive's"; onClicked: iv.resolve(card.r, "keep_local", always.checked) }
-                        PushButton { text: card.r.sub === "local_edit_cloud_delete" ? "Delete It" : "Keep Google Drive's"; tip: card.r.sub === "local_edit_cloud_delete" ? "Delete it here too (it goes to the Trash)" : "Download Google Drive's version; this computer's goes to the Trash"; onClicked: iv.resolve(card.r, "keep_cloud", always.checked) }
+                        PushButton { text: card.r.sub === "local_delete_cloud_edit" ? "Delete It" : "Keep This Computer's"; tip: card.r.sub === "local_delete_cloud_edit" ? "Delete it in " + iv.win.cloudName(card.r.account) + " too (it goes to " + iv.win.trashName(card.r.account) + ")" : "Upload this computer's version over " + iv.win.cloudName(card.r.account) + "'s"; onClicked: iv.resolve(card.r, "keep_local", always.checked) }
+                        PushButton { text: card.r.sub === "local_edit_cloud_delete" ? "Delete It" : "Keep " + iv.win.cloudName(card.r.account) + "'s"; tip: card.r.sub === "local_edit_cloud_delete" ? "Delete it here too (it goes to the Trash)" : "Download " + iv.win.cloudName(card.r.account) + "'s version; this computer's goes to the Trash"; onClicked: iv.resolve(card.r, "keep_cloud", always.checked) }
                     }
                     GCheck { id: always; text: "Do this for every conflict like this"; tip: "Remember this choice (Account settings › Conflicts)" }
                 }

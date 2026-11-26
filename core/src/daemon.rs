@@ -320,7 +320,10 @@ fn worker(s: S, a: Arc<Acct>, rx: Receiver<Trig>) {
                 Ok(Trig::Local(r)) => {
                     dirty.insert(r);
                 }
-                Ok(Trig::Now) => full = true,
+                Ok(Trig::Now) => {
+                    a.cloud.wake();
+                    full = true
+                }
                 Ok(Trig::Stop) => return,
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => return,
@@ -332,7 +335,10 @@ fn worker(s: S, a: Arc<Acct>, rx: Receiver<Trig>) {
                     Ok(Trig::Local(r)) => {
                         dirty.insert(r);
                     }
-                    Ok(Trig::Now) => full = true,
+                    Ok(Trig::Now) => {
+                    a.cloud.wake();
+                    full = true
+                }
                     Ok(Trig::Stop) => return,
                     Err(RecvTimeoutError::Timeout) => break,
                     Err(_) => return,
@@ -389,7 +395,7 @@ fn worker(s: S, a: Arc<Acct>, rx: Receiver<Trig>) {
 fn cycle(s: &S, a: &Arc<Acct>, full: bool, dirty: &HashSet<String>, last_drives: &mut Instant) -> Result<()> {
     let _g = a.cycle.lock();
     if a.root_id.read().is_empty() {
-        a.set_phase("starting", "Reading your Google Drive…");
+        a.set_phase("starting", &format!("Reading {}…", if a.cfg.read().rclone.is_some() { a.cfg.read().name.clone() } else { "your Google Drive".into() }));
         s.changed();
         let about = a.cloud.about()?;
         *a.root_id.write() = about.root_id.clone();
@@ -532,6 +538,13 @@ pub fn drive_for(s: &S, cfg: &Account) -> Result<Arc<Drive>> {
     Ok(Arc::new(Drive::new(agent, tokens, Some(db))))
 }
 
+/// The cloud of an account that syncs through rclone.
+pub fn rclone_for(cfg: &Account) -> Result<Arc<dyn Cloud>> {
+    let fs = cfg.rclone.clone().ok_or_else(|| anyhow!("not an rclone account"))?;
+    let db = Arc::new(Db::open(&paths::account_dir(&cfg.id).join("state.db"))?);
+    Ok(Arc::new(crate::rclone::RcloneCloud::new(&fs, &cfg.name, db)?))
+}
+
 pub fn new_shared(watch: bool) -> (S, Option<Receiver<RootKey>>) {
     let settings = Settings::load();
     throttle::UP.set_kib(settings.upload_limit);
@@ -565,6 +578,20 @@ pub fn run() -> Result<()> {
     s.hearth.store(crate::hearth::available(), Ordering::Relaxed);
     for cfg in Accounts::load().accounts {
         let id = cfg.id.clone();
+        if cfg.rclone.is_some() {
+            match rclone_for(&cfg) {
+                Ok(c) => {
+                    start_account(&s, cfg, c, None)?;
+                }
+                Err(e) => {
+                    let msg = format!("{e:#}");
+                    eprintln!("canopy: {id}: {msg}");
+                    let a = start_account(&s, cfg, Arc::new(SignedOut), None)?;
+                    a.set_phase("error", &msg);
+                }
+            }
+            continue;
+        }
         match drive_for(&s, &cfg) {
             Ok(d) => {
                 start_account(&s, cfg, d.clone(), Some(d))?;

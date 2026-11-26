@@ -1,11 +1,33 @@
 import QtQuick
 import QtQuick.Controls.Basic
 
-// Adding a Google account: the one-time client setup if needed, then
-// signing in through the browser (or pasting the address it ended on).
+// Adding an account. Google: from hearth's Internet Accounts, or the
+// one-time client setup and signing in through the browser (or pasting the
+// address it ended on). Other clouds: a remote set up in rclone (grove's
+// Connect to Server sets them up), synced to its own folder.
 Sheet {
     id: si
     property var win
+    property int tab: 0                    // 0 Google, 1 other clouds
+    readonly property bool google: tab === 0
+    // rclone: {available, remotes: [{name, type, label, added}]}.
+    property var remotes: ({ available: true, remotes: [] })
+    property bool loadingRemotes: false
+    function loadRemotes() {
+        loadingRemotes = true
+        win.api("rclone_remotes", {}, r => { si.remotes = r || { available: false, remotes: [] }; si.loadingRemotes = false }, e => { si.error = e; si.loadingRemotes = false })
+    }
+    function addRemote(r) {
+        si.error = ""
+        si.waiting = true
+        const sub = folderField.text.trim().replace(/^\/+|\/+$/g, "")
+        win.api("rclone_add", { remote: r.name + ":" + sub }, done => {
+            si.waiting = false
+            si.close()
+            si.win.cn.refresh()
+            si.win.toast.show("Syncing " + r.label + ". canopy is getting your files.")
+        }, e => { si.waiting = false; si.error = e })
+    }
     property string login: ""
     property string url: ""
     property bool waiting: false
@@ -18,9 +40,9 @@ Sheet {
     property var hearth: ({ available: false })
     property bool own: false               // canopy's own sign-in instead
     readonly property bool useHearth: hearth.available === true && !own
-    title: "Add a Google Account"
+    title: google ? "Add a Google Account" : "Add Another Cloud"
     width: Math.min(parent ? parent.width - 40 : 560, Math.round(520 * Theme.pt))
-    onOpened: { waiting = false; pasting = false; error = ""; login = ""; url = ""; own = false; loadHearth() }
+    onOpened: { waiting = false; pasting = false; error = ""; login = ""; url = ""; own = false; loadHearth(); loadRemotes() }
     function loadHearth() { win.api("hearth_accounts", {}, r => si.hearth = r || { available: false }, () => si.hearth = { available: false }) }
     // Internet Accounts changed (signed in there): list again.
     Connections {
@@ -57,9 +79,105 @@ Sheet {
         else go()
     }
 
+    Segmented {
+        model: [{ text: "Google Drive", tip: "A Google account (Docs, shared drives, sharing)" }, { text: "Other Clouds", tip: "Dropbox, OneDrive, Box, S3, SFTP, WebDAV, pCloud… through rclone" }]
+        current: si.tab
+        enabled: !si.waiting
+        onPicked: i => { si.tab = i; si.error = "" }
+    }
+
+    // ---- Other clouds (rclone) ----
+    Column {
+        visible: !si.google
+        width: parent.width
+        spacing: 10
+        GLabel {
+            width: parent.width
+            wrapMode: Text.Wrap
+            elide: Text.ElideNone
+            color: Theme.fgSecondary
+            text: si.remotes.available === false
+                  ? "Other clouds go through rclone, which isn't installed."
+                  : "canopy keeps a folder in ~/Canopy and the cloud the same, both ways, like Google Drive (no mounting: the files are really here). These are the clouds set up in rclone; set up a new one in grove: Go › Connect to Server…"
+        }
+        Repeater {
+            model: si.remotes.remotes || []
+            delegate: Rectangle {
+                required property var modelData
+                readonly property var r: modelData
+                width: parent.width
+                height: Math.round(46 * Theme.pt)
+                radius: Theme.radius
+                color: Theme.field
+                GIcon {
+                    id: ri
+                    x: 12; anchors.verticalCenter: parent.verticalCenter
+                    name: "folder-cloud|folder-remote"
+                    size: 22
+                }
+                Column {
+                    anchors.left: ri.right
+                    anchors.leftMargin: 10
+                    anchors.right: ra.left
+                    anchors.rightMargin: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    GLabel { width: parent.width; text: r.label }
+                    GLabel { width: parent.width; text: r.name + ":"; font.pixelSize: Theme.small; color: Theme.fgSecondary }
+                }
+                PushButton {
+                    id: ra
+                    anchors.right: parent.right
+                    anchors.rightMargin: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: !r.added
+                    primary: true
+                    enabled: !si.waiting
+                    text: "Sync"
+                    tip: "Keep " + r.label + " (" + r.name + ":" + (folderField.text.trim() ? folderField.text.trim() : "") + ") in sync with a folder in ~/Canopy"
+                    onClicked: si.addRemote(r)
+                }
+                GLabel {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 14
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: r.added
+                    text: "Already syncing"
+                    color: Theme.fgSecondary
+                    font.pixelSize: Theme.small
+                }
+            }
+        }
+        GLabel {
+            visible: si.remotes.available !== false && !si.loadingRemotes && (si.remotes.remotes || []).length === 0
+            width: parent.width
+            wrapMode: Text.Wrap
+            elide: Text.ElideNone
+            text: "No clouds set up in rclone yet."
+        }
+        GField {
+            id: folderField
+            visible: (si.remotes.remotes || []).length > 0
+            width: parent.width
+            placeholderText: "Only a folder of it (optional), e.g. Work or bucket/backup"
+            tip: "Sync just this folder of the cloud instead of all of it (needed for S3 and other services where the top level holds buckets)"
+        }
+        Row {
+            spacing: 8
+            GButton {
+                flat: false
+                iconName: "folder-remote|network-server"
+                text: "Open grove…"
+                tip: "Set up a new cloud in grove: Go › Connect to Server…; it appears here when you come back"
+                onClicked: si.win.cn.openGrove()
+            }
+            GButton { flat: false; iconName: "view-refresh"; text: "Look Again"; tip: "List rclone's clouds again"; onClicked: si.loadRemotes() }
+        }
+        BusyDots { running: si.waiting || si.loadingRemotes; visible: si.waiting || si.loadingRemotes }
+    }
+
     // ---- From hearth's Internet Accounts ----
     Column {
-        visible: si.useHearth
+        visible: si.google && si.useHearth
         width: parent.width
         spacing: 10
         GLabel {
@@ -136,7 +254,7 @@ Sheet {
 
     // Step 1: the client (once).
     Column {
-        visible: !si.useHearth && si.win.status.has_client !== true && !si.waiting
+        visible: si.google && !si.useHearth && si.win.status.has_client !== true && !si.waiting
         width: parent.width
         spacing: 8
         GLabel {
@@ -157,14 +275,14 @@ Sheet {
 
     // Step 2: sign in.
     GLabel {
-        visible: !si.useHearth && !si.waiting
+        visible: si.google && !si.useHearth && !si.waiting
         width: parent.width
         wrapMode: Text.Wrap
         elide: Text.ElideNone
         text: "Your browser opens Google's sign-in. Choose your account; when Google says it hasn't verified the app, click Advanced › Go to your app, and allow everything it asks for. Your files go to ~/Canopy/<your email>."
     }
     Column {
-        visible: !si.useHearth && si.waiting
+        visible: si.google && !si.useHearth && si.waiting
         width: parent.width
         spacing: 10
         Row {
@@ -191,6 +309,6 @@ Sheet {
 
     buttons: [
         PushButton { text: "Cancel"; onClicked: si.close() },
-        PushButton { visible: !si.useHearth && !si.waiting; primary: true; text: "Sign In with Google…"; enabled: si.hasClient; tip: si.hasClient ? "Open Google's sign-in in your browser" : "Paste your client ID and secret first"; onClicked: si.begin() }
+        PushButton { visible: si.google && !si.useHearth && !si.waiting; primary: true; text: "Sign In with Google…"; enabled: si.hasClient; tip: si.hasClient ? "Open Google's sign-in in your browser" : "Paste your client ID and secret first"; onClicked: si.begin() }
     ]
 }

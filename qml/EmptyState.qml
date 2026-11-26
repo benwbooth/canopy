@@ -22,12 +22,20 @@ Item {
             color: Theme.fgSecondary
             text: "canopy keeps a folder here and your Google Drive the same, both ways, as you work. Choose which folders to keep on this computer, sync any other folder, and open Google Docs from your files."
         }
-        PushButton {
+        Row {
             anchors.horizontalCenter: parent.horizontalCenter
-            primary: true
-            text: "Add Google Account…"
-            tip: "Sign in to Google in your browser"
-            onClicked: es.win.act("addaccount")
+            spacing: 10
+            PushButton {
+                primary: true
+                text: "Add Google Account…"
+                tip: "Sign in to Google in your browser"
+                onClicked: es.win.addAccount(0)
+            }
+            PushButton {
+                text: "Other Clouds…"
+                tip: "Dropbox, OneDrive, Box, S3, SFTP, WebDAV and more, set up in rclone (grove's Connect to Server)"
+                onClicked: es.win.addAccount(1)
+            }
         }
         GLabel {
             width: parent.width

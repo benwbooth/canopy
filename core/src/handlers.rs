@@ -319,6 +319,7 @@ fn status(s: &S) -> Value {
                 "id": cfg.id, "email": cfg.email, "name": cfg.name, "photo": cfg.photo, "base": cfg.base,
                 "paused": cfg.paused, "export": cfg.export, "conflicts": cfg.conflicts, "ignore_rules": cfg.ignore_rules,
                 "sync_shared_drives": cfg.sync_shared_drives, "sync_shared_with_me": cfg.sync_shared_with_me, "hearth_id": cfg.hearth_id,
+                "kind": if cfg.rclone.is_some() { "rclone" } else { "google" }, "rclone": cfg.rclone, "trash_label": a.cloud.trash_label(),
                 "roots": cfg.roots, "state": st,
                 "errors": issues.iter().filter(|i| i.kind != "conflict").count(),
                 "conflicts_count": issues.iter().filter(|i| i.kind == "conflict").count(),
@@ -371,6 +372,59 @@ fn add_account(s: &S, token: Option<String>, hearth: Option<String>) -> Result<V
     let _ = set_autostart(s.settings.read().start_at_login);
     s.changed();
     Ok(json!({"account": id, "email": about.email}))
+}
+
+/// The remotes in rclone's config, for "Add another cloud": [{name, type,
+/// label, added}]; `available`: rclone is installed.
+fn rclone_remotes(s: &S) -> Result<Value> {
+    if !crate::rclone::available() {
+        return Ok(json!({"available": false, "remotes": []}));
+    }
+    let added: Vec<String> = s.accounts.read().iter().filter_map(|a| a.cfg.read().rclone.clone()).collect();
+    let out: Vec<Value> = crate::rclone::remotes()?
+        .into_iter()
+        .map(|(name, kind)| {
+            let fs = format!("{name}:");
+            json!({"name": name, "type": kind, "label": crate::rclone::provider_label(&kind), "added": added.iter().any(|a| a == &fs || a.starts_with(&fs))})
+        })
+        .collect();
+    Ok(json!({"available": true, "remotes": out}))
+}
+
+/// Sync with an rclone remote ("dropbox:", or "s3:bucket/folder"):
+/// a new account whose folder is ~/Canopy/<remote> (or `local`).
+fn rclone_add(s: &S, fs: &str, local: Option<&str>) -> Result<Value> {
+    let fs = fs.trim();
+    let (name, sub) = fs.split_once(':').ok_or_else(|| anyhow!("write the remote as name: (from rclone's config), optionally with a folder after the colon"))?;
+    if name.is_empty() || name.contains('/') {
+        bail!("{fs} isn't an rclone remote");
+    }
+    let kind = crate::rclone::remotes()?.into_iter().find(|(n, _)| n == name).map(|(_, t)| t).ok_or_else(|| anyhow!("rclone has no remote named {name}"))?;
+    let label = crate::rclone::provider_label(&kind);
+    // Named after the remote, and the last folder of the part synced.
+    let leaf = sub.trim_matches('/').rsplit('/').next().unwrap_or("");
+    let label = if leaf.is_empty() { label } else { format!("{label} ({leaf})") };
+    let clean = |t: &str| -> String { t.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '.' { c } else { '_' }).collect() };
+    let safe = clean(&format!("{name}-{}", sub.trim_matches('/'))).trim_end_matches('-').to_string();
+    let folder = if leaf.is_empty() { name.to_string() } else { format!("{name} {leaf}") };
+    let id = format!("rclone-{safe}");
+    if s.account(&id).is_ok() {
+        bail!("canopy already syncs {fs}");
+    }
+    let base = match local {
+        Some(l) if !l.is_empty() => PathBuf::from(l),
+        _ => paths::default_base().join(crate::engine::local_safe(&folder)),
+    };
+    let roots = vec![Root { id: "mydrive".into(), kind: RootKind::MyDrive, local: base.clone(), name: label.clone(), mode: Mode::TwoWay, ..Default::default() }];
+    let cfg = Account { id: id.clone(), email: fs.to_string(), name: label.clone(), base, roots, rclone: Some(fs.to_string()), ..Default::default() };
+    // Reach it once now, so a mistake shows here, not later.
+    let cloud = daemon::rclone_for(&cfg)?;
+    cloud.about()?;
+    daemon::start_account(s, cfg, cloud, None)?;
+    s.save_accounts()?;
+    let _ = set_autostart(s.settings.read().start_at_login);
+    s.changed();
+    Ok(json!({"account": id, "email": fs}))
 }
 
 /// Change the account's export option: Google files on disk are replaced
@@ -597,6 +651,8 @@ pub fn handle(s: &S, cmd: &str, req: &Value) -> Result<Value> {
             Ok(Value::Null)
         }
         "hearth_open" => Ok(json!(crate::hearth::open_settings(str_arg(req, "arg")))),
+        "rclone_remotes" => rclone_remotes(s),
+        "rclone_add" => rclone_add(s, str_arg(req, "remote"), req.get("local").and_then(|x| x.as_str())),
         "login_cancel" => {
             s.logins.lock().remove(str_arg(req, "login"));
             Ok(Value::Null)
@@ -612,7 +668,7 @@ pub fn handle(s: &S, cmd: &str, req: &Value) -> Result<Value> {
                 }
             }
             s.accounts.write().retain(|x| !Arc::ptr_eq(x, &a));
-            if a.cfg.read().hearth_id.is_none() {
+            if a.cfg.read().hearth_id.is_none() && a.cfg.read().rclone.is_none() {
                 auth::forget_token(&id);
             }
             let _ = std::fs::remove_dir_all(paths::account_dir(&id));

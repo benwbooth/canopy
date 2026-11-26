@@ -108,6 +108,10 @@ impl ffi::Canopy {
         refresh_status(self.qt_thread(), self.rust().pending.clone(), 0);
     }
 
+    pub fn open_grove(&self) {
+        std::thread::spawn(desktop::open_grove);
+    }
+
     pub fn open_url(&self, url: &QString) {
         let u = url.to_string();
         std::thread::spawn(move || desktop::open_file(&u));

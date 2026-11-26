@@ -100,6 +100,9 @@
             doCheck = false;
             dontWrapQtApps = true;
             postFixup = ''
+              # rclone carries the files of non-Google clouds (the system's
+              # own first, when there is one).
+              wrapProgram $out/bin/canopyd --suffix PATH : ${pkgs.rclone}/bin
               wrapQtApp $out/bin/canopy \
                 --set-default CANOPY_FONT_DIR ${pkgs.inter}/share/fonts/truetype \
                 --suffix XDG_DATA_DIRS : ${whitesurIcons}/share
@@ -125,7 +128,7 @@
         let qtEnv = qtEnvFor pkgs; in
         {
           default = pkgs.mkShell {
-            packages = [ pkgs.cargo pkgs.rustc pkgs.clippy pkgs.rustfmt pkgs.pkg-config qtEnv pkgs.libGL pkgs.git pkgs.imagemagick pkgs.xvfb-run pkgs.sqlite ];
+            packages = [ pkgs.cargo pkgs.rustc pkgs.clippy pkgs.rustfmt pkgs.pkg-config qtEnv pkgs.libGL pkgs.git pkgs.imagemagick pkgs.xvfb-run pkgs.sqlite pkgs.rclone ];
             buildInputs = linkedFor pkgs;
             QMAKE = "${qtEnv}/bin/qmake";
             # Link with this shell's compiler (a system clang links against the

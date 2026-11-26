@@ -136,6 +136,9 @@ pub struct Account {
     /// Signed in through hearth's Internet Accounts (its account id):
     /// tokens come from there, canopy keeps no sign-in of its own.
     pub hearth_id: Option<String>,
+    /// An rclone remote and folder ("dropbox:", "s3:bucket/canopy"): this
+    /// account syncs with that service through rclone, not with Google.
+    pub rclone: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

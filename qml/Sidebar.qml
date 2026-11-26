@@ -105,8 +105,11 @@ Rectangle {
                     readonly property var a: sb.win.accounts.find(x => x.id === modelData) || ({ id: modelData, email: "", roots: [], state: {} })
                     width: col.width
                     readonly property string phase: (a.state || {}).phase || ""
+                    // Synced through rclone (Dropbox, OneDrive, S3...): no
+                    // Google sections.
+                    readonly property bool google: a.kind !== "rclone"
                     Header_ {
-                        label: a.email
+                        label: google ? a.email : (a.name || a.email)
                         menu: true
                         sync: a.paused ? "paused" : phase === "idle" ? "synced" : phase
                         tip: phase === "signed_out" ? "Sign in again to keep syncing" : phase === "offline" ? "Offline" : a.paused ? "Paused" : phase === "syncing" ? "Syncing…" : "Up to date"
@@ -118,10 +121,10 @@ Rectangle {
                         tip: "Google access for this account stopped working. Sign in to continue syncing."
                         onClicked: sb.win.signInAgain(a.id)
                     }
-                    Row_ { width: col.width; label: "My Drive"; icon: "folder-cloud|folder-remote"; selected: sb.win.page === "browse" && sb.win.account === a.id && sb.win.section === "my_drive"; tip: "Everything in your Drive: tick what to keep on this computer"; onClicked: sb.win.go("browse", a.id, "my_drive") }
-                    Row_ { width: col.width; label: "Shared with Me"; icon: "folder-publicshare|folder-remote"; selected: sb.win.page === "browse" && sb.win.account === a.id && sb.win.section === "shared"; tip: "Files other people shared with you"; onClicked: sb.win.go("browse", a.id, "shared") }
-                    Row_ { width: col.width; label: "Shared Drives"; icon: "network-server|folder-remote"; selected: sb.win.page === "browse" && sb.win.account === a.id && sb.win.section === "shared_drives"; tip: "Your team's shared drives"; onClicked: sb.win.go("browse", a.id, "shared_drives") }
-                    Row_ { width: col.width; label: "Starred"; icon: "starred|emblem-favorite"; selected: sb.win.page === "browse" && sb.win.account === a.id && sb.win.section === "starred"; tip: "Files you starred in Google Drive"; onClicked: sb.win.go("browse", a.id, "starred") }
+                    Row_ { width: col.width; label: google ? "My Drive" : "All Files"; icon: "folder-cloud|folder-remote"; selected: sb.win.page === "browse" && sb.win.account === a.id && sb.win.section === "my_drive"; tip: google ? "Everything in your Drive: tick what to keep on this computer" : "Everything in " + (a.name || "this cloud") + " (" + a.email + "): tick what to keep on this computer"; onClicked: sb.win.go("browse", a.id, "my_drive") }
+                    Row_ { visible: google; width: col.width; label: "Shared with Me"; icon: "folder-publicshare|folder-remote"; selected: sb.win.page === "browse" && sb.win.account === a.id && sb.win.section === "shared"; tip: "Files other people shared with you"; onClicked: sb.win.go("browse", a.id, "shared") }
+                    Row_ { visible: google; width: col.width; label: "Shared Drives"; icon: "network-server|folder-remote"; selected: sb.win.page === "browse" && sb.win.account === a.id && sb.win.section === "shared_drives"; tip: "Your team's shared drives"; onClicked: sb.win.go("browse", a.id, "shared_drives") }
+                    Row_ { visible: google; width: col.width; label: "Starred"; icon: "starred|emblem-favorite"; selected: sb.win.page === "browse" && sb.win.account === a.id && sb.win.section === "starred"; tip: "Files you starred in Google Drive"; onClicked: sb.win.go("browse", a.id, "starred") }
                     Row_ {
                         width: col.width; label: "Synced Folders"; icon: "folder-sync|folder"
                         count: (a.roots || []).length
@@ -132,7 +135,7 @@ Rectangle {
                 }
             }
             Item { width: 1; height: 10 }
-            Row_ { width: col.width; label: "Add Google Account…"; icon: "list-add-user|list-add"; tip: "Sign in to another Google account (each gets its own folder)"; onClicked: sb.win.act("addaccount") }
+            Row_ { width: col.width; label: "Add Account…"; icon: "list-add-user|list-add"; tip: "Sync another Google account, or Dropbox, OneDrive, S3 and other clouds set up in rclone (each gets its own folder)"; onClicked: sb.win.act("addaccount") }
             Row_ { width: col.width; visible: sb.win.accounts.length > 0; label: "Sync a Folder…"; icon: "folder-new|list-add"; tip: Help.tip("Keep any folder on this computer in sync with Google Drive (or back it up)", "addfolder"); onClicked: sb.win.act("addfolder") }
         }
     }

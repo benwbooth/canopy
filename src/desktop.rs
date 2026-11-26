@@ -37,6 +37,11 @@ pub fn show_in_file_manager(path: &str) {
     }
 }
 
+/// grove's window (a new one if it's running).
+pub fn open_grove() {
+    run_detached("grove", &["--new-window"]);
+}
+
 pub fn open_file(path: &str) {
     run_detached("xdg-open", &[path]);
 }

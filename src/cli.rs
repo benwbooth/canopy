@@ -10,7 +10,7 @@ pub const COMMANDS: &[&str] = &[
     "status", "preview", "pause", "resume", "sync", "account", "ignore-rules", "export-option", "conflict", "error", "selective-sync", "open-cloud", "share-link", "config", "quit", "start", "activity", "add-folder",
 ];
 
-pub const USAGE: &str = "canopy: Google Drive sync
+pub const USAGE: &str = "canopy: Google Drive sync (and Dropbox, OneDrive, S3... through rclone)
 
   canopy                         open the window
   canopy --background            start hidden (at login), so opening is instant
@@ -21,6 +21,8 @@ pub const USAGE: &str = "canopy: Google Drive sync
   canopy sync                    look for changes now
   canopy activity [N]            the last N things canopy did
   canopy account list | add [--paste] | remove EMAIL
+  canopy account remotes         the clouds set up in rclone (grove's Connect to Server)
+  canopy account add --rclone REMOTE: [--to FOLDER]   sync one (REMOTE:folder for a part)
   canopy ignore-rules [-a EMAIL] list | add RULE... | clear
   canopy export-option [-a EMAIL] [LINK|MS_OFFICE|OPEN_DOCUMENT]
   canopy conflict list | resolve PATH local|cloud|both [--always]
@@ -149,6 +151,22 @@ pub fn run(cmd: &str, mut args: Vec<String>) -> Result<()> {
                 for a in call("status", json!({}))?["accounts"].as_array().into_iter().flatten() {
                     println!("{}  {}", a["email"].as_str().unwrap_or(""), a["base"].as_str().unwrap_or(""));
                 }
+            }
+            "remotes" => {
+                let v = call("rclone_remotes", json!({}))?;
+                if v["available"].as_bool() != Some(true) {
+                    bail!("rclone isn't installed");
+                }
+                for r in v["remotes"].as_array().into_iter().flatten() {
+                    println!("{}:  {}{}", r["name"].as_str().unwrap_or(""), r["label"].as_str().unwrap_or(""), if r["added"].as_bool() == Some(true) { "  (synced)" } else { "" });
+                }
+            }
+            "add" if args.iter().any(|a| a == "--rclone") => {
+                let i = args.iter().position(|a| a == "--rclone").unwrap();
+                let remote = args.get(i + 1).cloned().ok_or_else(|| anyhow!("--rclone REMOTE: (see canopy account remotes)"))?;
+                let local = args.iter().position(|a| a == "--to").and_then(|j| args.get(j + 1)).map(|l| abs(l));
+                let r = call("rclone_add", json!({"remote": remote, "local": local}))?;
+                println!("Syncing {}.", r["email"].as_str().unwrap_or(""));
             }
             "add" => {
                 let mut c = api::Client::connect_or_start()?;

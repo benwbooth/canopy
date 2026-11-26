@@ -55,6 +55,9 @@ pub mod ffi {
         #[qinvokable]
         fn refresh(self: &Canopy);
         #[qinvokable]
+        /// Open grove (where clouds for rclone are set up: Connect to Server).
+        fn open_grove(self: &Canopy);
+        #[qinvokable]
         fn open_url(self: &Canopy, url: &QString);
         /// Open a folder or file in its app.
         #[qinvokable]

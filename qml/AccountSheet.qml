@@ -7,17 +7,22 @@ Sheet {
     id: as_
     property var win
     property string accountId: ""
-    property int tab: 0
+    // general, docs, conflicts, ignore.
+    property string page: "general"
     readonly property var a: win.accounts.find(x => x.id === accountId) || ({})
-    title: a.email || "Account"
+    // A Google account (else a cloud synced through rclone: no Google Docs,
+    // shared drives or Google storage page).
+    readonly property bool google: a.kind !== "rclone"
+    readonly property string cloud: google ? "Google Drive" : (a.name || "the cloud")
+    title: google ? (a.email || "Account") : (a.name || "Account") + " (" + (a.email || "") + ")"
     width: Math.min(parent ? parent.width - 40 : 640, Math.round(600 * Theme.pt))
-    function openFor(id) { accountId = id; tab = 0; rules.text = (a.ignore_rules || []).join("\n"); open() }
+    function openFor(id) { accountId = id; page = "general"; rules.text = (a.ignore_rules || []).join("\n"); open() }
     function put(o) { win.api("set_account", Object.assign({ account: accountId }, o), () => win.cn.refresh()) }
     readonly property var resolutions: [
         { v: "keep_both", t: "Keep both (rename this computer's)" },
         { v: "ask", t: "Ask me" },
         { v: "keep_local", t: "Keep this computer's" },
-        { v: "keep_cloud", t: "Keep Google Drive's" }
+        { v: "keep_cloud", t: "Keep " + cloud + "'s" }
     ]
 
     component Line: Item {
@@ -36,13 +41,19 @@ Sheet {
     }
 
     Segmented {
-        model: [{ text: "General", tip: "Folder, pausing, shared drives" }, { text: "Google Docs", tip: "How Docs, Sheets and Slides appear on this computer" }, { text: "Conflicts", tip: "What to do when a file changes in two places" }, { text: "Ignore Rules", tip: "Files canopy leaves alone" }]
-        current: as_.tab
-        onPicked: i => as_.tab = i
+        readonly property var pages: [
+            { k: "general", text: "General", tip: as_.google ? "Folder, pausing, shared drives" : "Folder, pausing" },
+            { k: "docs", text: "Google Docs", tip: "How Docs, Sheets and Slides appear on this computer" },
+            { k: "conflicts", text: "Conflicts", tip: "What to do when a file changes in two places" },
+            { k: "ignore", text: "Ignore Rules", tip: "Files canopy leaves alone" }
+        ].filter(p => as_.google || p.k !== "docs")
+        model: pages
+        current: pages.findIndex(p => p.k === as_.page)
+        onPicked: i => as_.page = pages[i].k
     }
 
     Column {
-        visible: as_.tab === 0
+        visible: as_.page === "general"
         width: parent.width
         spacing: 10
         Line {
@@ -56,31 +67,31 @@ Sheet {
                     flat: false
                     tip: "Move the folder somewhere else (another disk too); nothing is downloaded again"
                     onClicked: Async.call(as_.win.cn, k => as_.win.cn.chooseFolder(k, as_.a.base), r => {
-                        if (r && r.folder) as_.win.api("move_base", { account: as_.accountId, to: r.folder + "/" + as_.a.email }, () => as_.win.toast.show("Moved to " + r.folder + "/" + as_.a.email + "."))
+                        if (r && r.folder) { const leaf = (as_.a.base || "").split("/").pop(); as_.win.api("move_base", { account: as_.accountId, to: r.folder + "/" + leaf }, () => as_.win.toast.show("Moved to " + r.folder + "/" + leaf + ".")) }
                     })
                 }
             }
         }
         Line { label: "Pause this account"; help: "Stop syncing just this account."; GSwitch { checked: as_.a.paused === true; tip: "Pause or resume this account"; onToggled: as_.put({ paused: checked }) } }
-        Line { label: "Sync shared drives"; help: "Each shared drive gets a folder inside “Shared drives”."; GSwitch { checked: as_.a.sync_shared_drives === true; tip: "Sync your team's shared drives too"; onToggled: as_.put({ sync_shared_drives: checked }) } }
+        Line { visible: as_.google; label: "Sync shared drives"; help: "Each shared drive gets a folder inside “Shared drives”."; GSwitch { checked: as_.a.sync_shared_drives === true; tip: "Sync your team's shared drives too"; onToggled: as_.put({ sync_shared_drives: checked }) } }
         Line {
             label: "Storage"
             help: ((as_.a.state || {}).quota_total ? as_.win.size((as_.a.state || {}).quota_used) + " of " + as_.win.size((as_.a.state || {}).quota_total) + " used" : "")
-            GButton { text: "Manage on Google"; flat: false; tip: "one.google.com/storage"; onClicked: as_.win.cn.openUrl("https://one.google.com/storage") }
+            GButton { visible: as_.google; text: "Manage on Google"; flat: false; tip: "one.google.com/storage"; onClicked: as_.win.cn.openUrl("https://one.google.com/storage") }
         }
         Line {
             label: "Remove this account"
-            help: as_.a.hearth_id ? "canopy stops syncing it. The account stays in Settings › Internet Accounts for your other apps; your files stay in the folder and in Google Drive." : "canopy stops syncing it and signs out. Your files stay in the folder and in Google Drive."
+            help: !as_.google ? "canopy stops syncing it. Your files stay in the folder and in " + as_.cloud + " (rclone keeps its setup, for grove and others)." : as_.a.hearth_id ? "canopy stops syncing it. The account stays in Settings › Internet Accounts for your other apps; your files stay in the folder and in Google Drive." : "canopy stops syncing it and signs out. Your files stay in the folder and in Google Drive."
             PushButton {
                 destructive: true
                 text: "Remove…"
-                onClicked: as_.win.confirmSheet("Remove " + as_.a.email + "?", "canopy stops syncing it and signs out. The files in " + as_.a.base + " stay on this computer, and everything stays in Google Drive.", "Remove Account", () => as_.win.api("account_remove", { account: as_.accountId }, () => { as_.close(); as_.win.cn.refresh() }))
+                onClicked: as_.win.confirmSheet("Remove " + (as_.google ? as_.a.email : as_.a.name) + "?", "canopy stops syncing it" + (as_.google ? " and signs out" : "") + ". The files in " + as_.a.base + " stay on this computer, and everything stays in " + as_.cloud + ".", "Remove Account", () => as_.win.api("account_remove", { account: as_.accountId }, () => { as_.close(); as_.win.cn.refresh() }))
             }
         }
     }
 
     Column {
-        visible: as_.tab === 1
+        visible: as_.page === "docs"
         width: parent.width
         spacing: 10
         GLabel { width: parent.width; wrapMode: Text.Wrap; elide: Text.ElideNone; color: Theme.fgSecondary; text: "Google Docs, Sheets and Slides aren't files you can download. Choose how they appear in your folder:" }
@@ -117,15 +128,15 @@ Sheet {
     }
 
     Column {
-        visible: as_.tab === 2
+        visible: as_.page === "conflicts"
         width: parent.width
         spacing: 10
         GLabel { width: parent.width; wrapMode: Text.Wrap; elide: Text.ElideNone; color: Theme.fgSecondary; text: "A conflict is a file changed in two places before canopy could sync it. Whatever you choose, nothing is lost: replaced versions go to a trash." }
         Repeater {
             model: [
-                { k: "edit_edit", t: "Changed here and in Google Drive" },
-                { k: "local_edit_cloud_delete", t: "Changed here, deleted in Google Drive" },
-                { k: "local_delete_cloud_edit", t: "Deleted here, changed in Google Drive" }
+                { k: "edit_edit", t: "Changed here and in " + as_.cloud },
+                { k: "local_edit_cloud_delete", t: "Changed here, deleted in " + as_.cloud },
+                { k: "local_delete_cloud_edit", t: "Deleted here, changed in " + as_.cloud }
             ]
             delegate: Line {
                 required property var modelData
@@ -142,7 +153,7 @@ Sheet {
     }
 
     Column {
-        visible: as_.tab === 3
+        visible: as_.page === "ignore"
         width: parent.width
         spacing: 8
         GLabel { width: parent.width; wrapMode: Text.Wrap; elide: Text.ElideNone; color: Theme.fgSecondary; text: "One rule per line, like .gitignore: a name (node_modules) matches anywhere; a path (Projects/build) from the folder's top; *.iso every .iso file; Videos/* everything inside Videos; !Videos/keep.mp4 an exception. Case-sensitive. Ignored items stop syncing but aren't deleted." }

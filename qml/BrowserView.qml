@@ -14,6 +14,8 @@ Item {
     // Folders opened: [{id, name}]
     property var stack: []
     readonly property string account: win.acct ? win.acct.id : ""
+    readonly property string cl: win.cloudName(account)
+    readonly property bool google: !win.acct || win.acct.kind !== "rclone"
     readonly property string section: win.section
     readonly property string sectionName: ({ my_drive: "My Drive", shared: "Shared with Me", shared_drives: "Shared Drives", starred: "Starred" })[section] || "My Drive"
 
@@ -54,9 +56,9 @@ Item {
             win.toast.show("Items shared with you sync once they're in My Drive: open it on the web and choose Add shortcut to Drive.", [{ text: "Open", run: () => win.cn.openUrl(it.web) }])
             return
         }
-        const go = () => win.api("select", { account: account, root: it.root, path: it.rel, synced: on }, () => { bv.reload(); win.toast.show(on ? "“" + it.name + "” will be downloaded." : "“" + it.name + "” is now only in Google Drive; the copy on this computer went to the Trash.") })
+        const go = () => win.api("select", { account: account, root: it.root, path: it.rel, synced: on }, () => { bv.reload(); win.toast.show(on ? "“" + it.name + "” will be downloaded." : "“" + it.name + "” is now only in " + bv.cl + "; the copy on this computer went to the Trash.") })
         if (!on && (it.sync === "synced" || it.sync === "partial")) {
-            win.confirmSheet("Remove “" + it.name + "” from this computer?", "It stays in Google Drive, and you can tick it again any time. The copy on this computer goes to the Trash.", "Remove from This Computer", go)
+            win.confirmSheet("Remove “" + it.name + "” from this computer?", "It stays in " + bv.cl + ", and you can tick it again any time. The copy on this computer goes to the Trash.", "Remove from This Computer", go)
         } else go()
     }
     function iconFor(it) {
@@ -70,7 +72,7 @@ Item {
         return m.replace("/", "-") + "|" + m.split("/")[0] + "-x-generic|application-x-generic|unknown|text-x-generic"
     }
     function stateTip(s) {
-        return ({ synced: "On this computer and in Google Drive", pending: "Being downloaded", partial: "Some of what's inside is on this computer", cloud: "Only in Google Drive" })[s] || ""
+        return ({ synced: "On this computer and in " + bv.cl, pending: "Being downloaded", partial: "Some of what's inside is on this computer", cloud: "Only in " + bv.cl })[s] || ""
     }
 
     // ---- header: path and actions ----
@@ -111,7 +113,7 @@ Item {
                 text: "New"
                 iconName: "list-add|document-new"
                 flat: false
-                tip: "Make a new folder, Google Doc, Sheet or Slides here in Google Drive"
+                tip: bv.google ? "Make a new folder, Google Doc, Sheet or Slides here in Google Drive" : "Make a new folder here in " + bv.cl
                 checked: newMenu.visible
                 onClicked: newMenu.toggle()
             }
@@ -123,11 +125,11 @@ Item {
         id: newMenu
         anchorItem: newButton
         model: [
-            { id: "folder", text: "Folder", icon: "folder-new|folder", tip: "A new folder in Google Drive, here" },
+            { id: "folder", text: "Folder", icon: "folder-new|folder", tip: "A new folder in " + bv.cl + ", here" },
             { id: "document", text: "Google Doc", icon: "x-office-document", tip: "A new Google Doc, opened in your browser" },
             { id: "spreadsheet", text: "Google Sheet", icon: "x-office-spreadsheet", tip: "A new Google Sheet, opened in your browser" },
             { id: "presentation", text: "Google Slides", icon: "x-office-presentation", tip: "A new Google Slides presentation, opened in your browser" }
-        ]
+        ].filter(m => bv.google || m.id === "folder")
         onTriggered: k => {
             const label = ({ folder: "Folder", document: "Google Doc", spreadsheet: "Google Sheet", presentation: "Google Slides" })[k]
             bv.win.askName("New " + label, k === "folder" ? "untitled folder" : "Untitled", name => bv.win.api("create", { account: bv.account, parent: bv.stack.length ? bv.stack[bv.stack.length - 1].id : "", name: name, kind: k }, it => { bv.reload(); if (it.google) bv.win.cn.openUrl(it.web) }))

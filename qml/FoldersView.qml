@@ -7,12 +7,13 @@ Item {
     id: fv
     property var win
     readonly property var acct: win.acct
+    readonly property string cl: win.cloudName(acct ? acct.id : "")
     readonly property var roots: acct ? acct.roots || [] : []
     readonly property string rootKey: roots.map(r => r.id).join("\n")
     readonly property var modes: [
         { text: "Two-Way", value: "two_way", tip: "Changes go both ways (the usual)" },
-        { text: "Back Up", value: "local_to_cloud", tip: "Only this computer's changes go to Google Drive; the cloud copy follows this folder" },
-        { text: "Download Only", value: "cloud_to_local", tip: "This folder follows Google Drive; changes made here aren't uploaded" }
+        { text: "Back Up", value: "local_to_cloud", tip: "Only this computer's changes go to " + fv.cl + "; the cloud copy follows this folder" },
+        { text: "Download Only", value: "cloud_to_local", tip: "This folder follows " + fv.cl + "; changes made here aren't uploaded" }
     ]
 
     Item {
@@ -26,7 +27,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             primary: true
             text: "Sync a Folder…"
-            tip: Help.tip("Keep another folder on this computer in sync with Google Drive (or back it up)", "addfolder")
+            tip: Help.tip("Keep another folder on this computer in sync with " + fv.cl + " (or back it up)", "addfolder")
             onClicked: fv.win.act("addfolder")
         }
     }
@@ -88,7 +89,7 @@ Item {
                         text: "Stop Syncing"
                         flat: false
                         tip: "Stop keeping this folder in sync. Both copies stay as they are."
-                        onClicked: fv.win.confirmSheet("Stop syncing “" + card.r.name + "”?", "The folder on this computer and its copy in Google Drive both stay; they just won't be kept the same any more.", "Stop Syncing", () => fv.win.api("remove_root", { account: fv.acct.id, root: card.r.id }))
+                        onClicked: fv.win.confirmSheet("Stop syncing “" + card.r.name + "”?", "The folder on this computer and its copy in " + fv.cl + " both stay; they just won't be kept the same any more.", "Stop Syncing", () => fv.win.api("remove_root", { account: fv.acct.id, root: card.r.id }))
                     }
                     GButton {
                         visible: card.held.indexOf("missing") >= 0
