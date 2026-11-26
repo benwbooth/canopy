@@ -82,7 +82,7 @@ Item {
                         GLabel { width: parent.width; text: h.message; wrapMode: Text.Wrap; elide: Text.ElideNone; color: Theme.fgSecondary }
                         Row {
                             spacing: 8
-                            PushButton { visible: h.signin === true; primary: true; text: "Sign In…"; onClicked: iv.win.act("addaccount") }
+                            PushButton { visible: h.signin === true; primary: true; text: "Sign In Again…"; onClicked: iv.win.signInAgain(h.account || "") }
                             PushButton {
                                 visible: !h.signin && h.message.indexOf("missing") >= 0
                                 primary: true; text: "Locate…"

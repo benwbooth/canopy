@@ -178,6 +178,33 @@ impl Shared {
         std::thread::spawn(move || crate::tray::notify(&summary, &body));
     }
 
+    /// "Sign in again", with a Sign In Again… button that does it.
+    pub fn notify_signin(self: &Arc<Self>, email: &str) {
+        if !self.settings.read().notifications {
+            return;
+        }
+        {
+            let mut last = self.last_note.lock();
+            if last.get("auth").map(|t| t.elapsed() < Duration::from_secs(120)).unwrap_or(false) {
+                return;
+            }
+            last.insert("auth".into(), Instant::now());
+        }
+        let body = format!("Google Drive access for {email} stopped working, so syncing is stopped until you sign in again.");
+        let w = Arc::downgrade(self);
+        std::thread::spawn(move || {
+            crate::tray::notify_action(
+                "canopy: sign in again",
+                &body,
+                Some(("Sign In Again…", Box::new(move || {
+                    if let Some(s) = w.upgrade() {
+                        crate::tray::sign_in_again(&s);
+                    }
+                }))),
+            )
+        });
+    }
+
     fn sink_for(self: &Arc<Self>, account: &str) -> Sink {
         let s = Arc::downgrade(self);
         let account = account.to_string();
@@ -343,7 +370,7 @@ fn worker(s: S, a: Arc<Acct>, rx: Receiver<Trig>) {
                 if drive::is_auth_error(&e) {
                     let hearth = a.cfg.read().hearth_id.is_some();
                     a.set_phase("signed_out", &if hearth { format!("{msg}") } else { "Sign in again to keep syncing.".into() });
-                    s.notify("auth", "canopy: sign in again", &format!("Google Drive access for {} stopped working. Open canopy to sign in again{}.", a.cfg.read().email, if hearth { " (Settings › Internet Accounts)" } else { "" }));
+                    s.notify_signin(&a.cfg.read().email);
                     backoff = 6;
                 } else if drive::is_offline(&e) {
                     a.set_phase("offline", "No connection to Google Drive. canopy keeps trying.");

@@ -40,6 +40,32 @@ fn open_window() {
     let _ = std::process::Command::new(exe).spawn();
 }
 
+/// Sign every signed-out account in again: an Internet Accounts account
+/// goes straight to hearth's sign-in (the browser opens); one canopy signs
+/// in by itself opens the window, whose sidebar has Sign In Again….
+pub fn sign_in_again(s: &Arc<Shared>) {
+    let mut window = false;
+    for a in s.accounts.read().iter() {
+        if a.state.lock().phase != "signed_out" {
+            continue;
+        }
+        match a.cfg.read().hearth_id.clone() {
+            Some(id) => {
+                std::thread::spawn(move || {
+                    if let Err(e) = crate::hearth::sign_in_again(&id) {
+                        eprintln!("canopy: sign in again: {e:#}");
+                        open_window();
+                    }
+                });
+            }
+            None => window = true,
+        }
+    }
+    if window {
+        open_window();
+    }
+}
+
 fn open_path(p: &std::path::Path) {
     let _ = std::process::Command::new("xdg-open").arg(p).spawn();
 }
@@ -98,9 +124,27 @@ impl ksni::Tray for CanopyTray {
         let state = s.overall();
         let mut m: Vec<MenuItem<Self>> = vec![
             StandardItem { label: label(&state, s.transfers.lock().len()), enabled: false, ..Default::default() }.into(),
+        ];
+        if state == "signed_out" || s.accounts.read().iter().any(|a| a.state.lock().phase == "signed_out") {
+            let w = self.s.clone();
+            m.push(
+                StandardItem {
+                    label: "Sign In Again…".into(),
+                    icon_name: "dialog-password".into(),
+                    activate: Box::new(move |_| {
+                        if let Some(s) = w.upgrade() {
+                            sign_in_again(&s);
+                        }
+                    }),
+                    ..Default::default()
+                }
+                .into(),
+            );
+        }
+        m.extend([
             MenuItem::Separator,
             StandardItem { label: "Open canopy".into(), icon_name: "folder-cloud".into(), activate: Box::new(|_| open_window()), ..Default::default() }.into(),
-        ];
+        ]);
         let accts = s.accounts.read().clone();
         let many = accts.len() > 1;
         for a in &accts {
@@ -201,14 +245,46 @@ pub fn start(s: &S) {
 
 /// Send a desktop notification (blocks briefly; call off busy threads).
 pub fn notify(summary: &str, body: &str) {
+    notify_action(summary, body, None);
+}
+
+/// A notification with one button (`label`); `on_click` runs when it, or
+/// the notification itself, is clicked. Waits for the answer on this
+/// (worker) thread until the notification closes.
+pub fn notify_action(summary: &str, body: &str, action: Option<(&str, Box<dyn FnOnce() + Send>)>) {
     static CONN: OnceLock<Option<zbus::blocking::Connection>> = OnceLock::new();
     let Some(c) = CONN.get_or_init(|| zbus::blocking::Connection::session().ok()) else { return };
+    let Some((label, on_click)) = action else {
+        let _ = send(c, summary, body, &[], 8000);
+        return;
+    };
+    // Subscribe before sending, so a quick click isn't missed.
+    let Ok(rule) = zbus::MatchRule::builder().msg_type(zbus::message::Type::Signal).interface("org.freedesktop.Notifications").map(|r| r.build()) else { return };
+    let Ok(msgs) = zbus::blocking::MessageIterator::for_match_rule(rule, c, Some(16)) else { return };
+    let Some(id) = send(c, summary, body, &["default", label, "signin", label], 0) else { return };
+    for m in msgs.flatten() {
+        let h = m.header();
+        let Some(member) = h.member() else { continue };
+        match member.as_str() {
+            "ActionInvoked" if m.body().deserialize::<(u32, String)>().is_ok_and(|(n, _)| n == id) => {
+                on_click();
+                return;
+            }
+            "NotificationClosed" if m.body().deserialize::<(u32, u32)>().is_ok_and(|(n, _)| n == id) => return,
+            _ => {}
+        }
+    }
+}
+
+fn send(c: &zbus::blocking::Connection, summary: &str, body: &str, actions: &[&str], timeout: i32) -> Option<u32> {
     let hints: std::collections::HashMap<&str, zbus::zvariant::Value> = std::collections::HashMap::from([("desktop-entry", zbus::zvariant::Value::from("canopy"))]);
-    let _ = c.call_method(
+    c.call_method(
         Some("org.freedesktop.Notifications"),
         "/org/freedesktop/Notifications",
         Some("org.freedesktop.Notifications"),
         "Notify",
-        &("canopy", 0u32, "canopy", summary, body, Vec::<&str>::new(), hints, 8000i32),
-    );
+        &("canopy", 0u32, "canopy", summary, body, actions.to_vec(), hints, timeout),
+    )
+    .ok()
+    .and_then(|r| r.body().deserialize::<u32>().ok())
 }

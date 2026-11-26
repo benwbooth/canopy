@@ -289,6 +289,14 @@ ApplicationWindow {
                     GLabel { text: win.headline(); font.weight: Font.DemiBold; width: Math.min(implicitWidth, 300) }
                     GLabel { text: win.subline(); font.pixelSize: Theme.caption; color: Theme.fgSecondary; width: Math.min(implicitWidth, 300) }
                 }
+                PushButton {
+                    visible: canopy.connected && win.overall === "signed_out"
+                    primary: true
+                    text: "Sign In Again…"
+                    tip: "Google access stopped working: sign in to continue syncing"
+                    anchors.verticalCenter: parent.verticalCenter
+                    onClicked: win.signInAgain("")
+                }
             }
             GField {
                 id: searchField
@@ -366,6 +374,18 @@ ApplicationWindow {
             anchors.bottomMargin: 18
             z: 20
         }
+    }
+
+    // Sign the signed-out accounts in again: Internet Accounts ones through
+    // hearth (the browser opens), canopy's own through the sign-in sheet.
+    function signInAgain(account) {
+        const out = accounts.filter(a => (account ? a.id === account : true) && (a.state || {}).phase === "signed_out")
+        let own = false
+        for (const a of (out.length ? out : accounts.filter(x => !account || x.id === account))) {
+            if (a.hearth_id) api("hearth_signin", { id: a.hearth_id }, () => toast.show("Finish signing in in your browser."))
+            else own = true
+        }
+        if (own) act("addaccount")
     }
 
     function headline() {
