@@ -1,4 +1,5 @@
 #include "native_helpers.h"
+#include <QtCore/QProcessEnvironment>
 #include "global_menu.h"
 
 #include <QtCore/QDir>
@@ -118,6 +119,29 @@ void canopy_set_icon_theme(bool dark)
     QIcon::setFallbackThemeName(QStringLiteral("hicolor"));
 }
 
+// Puts back what start-up changed in the environment for Qt (noted as
+// __APP_ORIG_<name>: empty = unset, else "=value"), once the main QML has
+// loaded, so programs this app starts get the desktop's own (our
+// QT_QUICK_CONTROLS_STYLE=Basic made KDE apps opened from here draw plain
+// light controls, 2026-11-25).
+static void restoreLaunchEnv()
+{
+    const QStringList keys = QProcessEnvironment::systemEnvironment().keys();
+    for (const QString& k : keys) {
+        if (!k.startsWith(QLatin1String("__APP_ORIG_")))
+            continue;
+        const QByteArray key = k.toLocal8Bit();
+        const QByteArray name = k.mid(11).toLocal8Bit();
+        const QByteArray v = qgetenv(key.constData());
+        if (v.startsWith('='))
+            qputenv(name.constData(), v.mid(1));
+        else
+            qunsetenv(name.constData());
+        qunsetenv(key.constData());
+    }
+}
+
+
 int canopy_run(const QString& url, const QString& importPath)
 {
     qmlRegisterType<GlobalMenuBar>("GlobalMenu", 1, 0, "GlobalMenuBar");
@@ -126,6 +150,7 @@ int canopy_run(const QString& url, const QString& importPath)
     if (!importPath.isEmpty()) engine->addImportPath(importPath);
     engine->load(QUrl(url));
     if (engine->rootObjects().isEmpty()) return 1;
+    restoreLaunchEnv();
     return QGuiApplication::exec();
 }
 
