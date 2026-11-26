@@ -17,7 +17,7 @@ Item {
     readonly property string cl: win.cloudName(account)
     readonly property bool google: !win.acct || win.acct.kind !== "rclone"
     readonly property string section: win.section
-    readonly property string sectionName: ({ my_drive: "My Drive", shared: "Shared with Me", shared_drives: "Shared Drives", starred: "Starred" })[section] || "My Drive"
+    readonly property string sectionName: ({ my_drive: google ? "My Drive" : cl, shared: "Shared with Me", shared_drives: "Shared Drives", starred: "Starred" })[section] || "My Drive"
 
     onVisibleChanged: if (visible) reload()
     onAccountChanged: { stack = []; if (visible) reload() }

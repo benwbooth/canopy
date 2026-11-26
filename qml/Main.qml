@@ -213,7 +213,7 @@ ApplicationWindow {
             mk("attention", "Needs Attention", "dialog-warning"),
             mk("conflicts", "Conflicts", "dialog-question|vcs-conflicting"),
             { separator: true },
-            mk("mydrive", "My Drive", "folder-cloud|folder-remote", hasAcct),
+            mk("mydrive", acct && acct.kind === "rclone" ? "All Files" : "My Drive", "folder-cloud|folder-remote", hasAcct),
             mk("folders", "Synced Folders", "folder-sync|folder", hasAcct),
             mk("search", "Search", "edit-find|system-search", hasAccounts),
             { separator: true },
