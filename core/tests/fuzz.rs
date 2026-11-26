@@ -298,7 +298,7 @@ impl World {
     /// Versions on either side that canopy hasn't synced (md5s).
     fn unsynced(&self) -> HashSet<String> {
         let base = self.eng.db.base_all("r").unwrap();
-        let synced: HashSet<String> = base.iter().filter_map(|b| b.c_md5.clone()).collect();
+        let synced: HashSet<String> = base.iter().filter_map(|b| b.c_hash.clone()).collect();
         let mut out = HashSet::new();
         for f in files_under(&self.local, true) {
             let m = md5_file(&f).unwrap();
@@ -334,10 +334,10 @@ impl World {
     fn fail(&self, seed: u64, what: &str) -> ! {
         if let Ok(name) = std::env::var("CANOPY_FUZZ_DUMP") {
             for it in self.eng.db.items_where("name = ?1", &name, 50).unwrap_or_default() {
-                eprintln!("mirror: {} parents={:?} trashed={} md5={:?} v={}", it.id, it.parents, it.trashed, it.md5, it.version);
+                eprintln!("mirror: {} parents={:?} trashed={} md5={:?} v={}", it.id, it.parents, it.trashed, it.hash, it.version);
             }
             for b in self.eng.db.base_all("r").unwrap() {
-                eprintln!("base: {} {} cl={} md5={:?}", b.path, b.kind, b.cl_id, b.c_md5);
+                eprintln!("base: {} {} cl={} md5={:?}", b.path, b.kind, b.cl_id, b.c_hash);
             }
             for (id, p, _) in self.cloud_entries() {
                 let it = self.cloud.item(&id).unwrap();

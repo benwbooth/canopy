@@ -1,5 +1,7 @@
 //! What the sync engine needs from a cloud drive. `drive::Drive` talks to
-//! Google; `fake::FakeCloud` keeps everything in memory for tests.
+//! Google; `rclone::RcloneCloud` to any of rclone's services (Dropbox,
+//! OneDrive, S3, SFTP...); `fake::FakeCloud` keeps everything in memory for
+//! tests.
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -16,9 +18,13 @@ pub struct CloudItem {
     pub mime: String,
     #[serde(default)]
     pub parents: Vec<String>,
-    /// Binary files only (Google Docs have none).
-    #[serde(default)]
-    pub md5: Option<String>,
+    /// The content hash, of the kind the cloud keeps (`Cloud::hash_local`
+    /// makes the same of a local file): MD5 for Google Drive, Dropbox's or
+    /// OneDrive's own for those... None: files the cloud has no hash for
+    /// (Google Docs; WebDAV, FTP), compared by `version` instead.
+    /// (Stored as "md5", its name when Drive was the only cloud.)
+    #[serde(default, rename = "md5")]
+    pub hash: Option<String>,
     #[serde(default)]
     pub size: Option<u64>,
     /// Seconds since the epoch.
@@ -127,4 +133,32 @@ pub trait Cloud: Send + Sync {
     fn keep_revision(&self, _id: &str) -> Result<()> {
         Ok(())
     }
+
+    // --- what kind of cloud this is (defaults: Google Drive) ---
+
+    /// What the cloud is called in messages ("Google Drive", "Dropbox").
+    fn label(&self) -> String {
+        "Google Drive".into()
+    }
+    /// Google's own features: Docs/Sheets/Slides (link files, exports),
+    /// shared drives, sharing, stars.
+    fn is_google(&self) -> bool {
+        true
+    }
+    /// A local file's content hash, in the form `CloudItem::hash` has.
+    fn hash_local(&self, path: &Path) -> Result<String> {
+        crate::engine::md5_file(path)
+    }
+    /// Names that differ only in case are the same file there (Dropbox,
+    /// OneDrive): two such local files can't both be synced.
+    fn case_insensitive(&self) -> bool {
+        false
+    }
+    /// Where deleted items go, in messages ("Google Drive's trash").
+    fn trash_label(&self) -> String {
+        format!("{}'s trash", self.label())
+    }
+    /// The user asked to sync now: the next changes read looks again even
+    /// if the cloud rate-limits its look-ups.
+    fn wake(&self) {}
 }

@@ -66,7 +66,7 @@ pub fn item_from(v: &Value) -> CloudItem {
         name: s("name").unwrap_or_default(),
         mime: s("mimeType").unwrap_or_default(),
         parents: v.get("parents").and_then(|p| p.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default(),
-        md5: s("md5Checksum"),
+        hash: s("md5Checksum"),
         size: s("size").and_then(|x| x.parse().ok()),
         mtime: s("modifiedTime").map(|t| rfc3339_to_secs(&t)).unwrap_or(0.0),
         created: s("createdTime").map(|t| rfc3339_to_secs(&t)).unwrap_or(0.0),

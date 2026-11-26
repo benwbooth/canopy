@@ -66,7 +66,7 @@ impl FakeCloud {
         let mut s = self.s.lock();
         let id = Self::new_id(&mut s);
         let clock = s.clock;
-        s.items.insert(id.clone(), CloudItem { id: id.clone(), name: name.into(), mime: "application/octet-stream".into(), parents: vec![parent.into()], md5: Some(hex_md5(data)), size: Some(data.len() as u64), created: clock, can_edit: true, owned_by_me: true, ..Default::default() });
+        s.items.insert(id.clone(), CloudItem { id: id.clone(), name: name.into(), mime: "application/octet-stream".into(), parents: vec![parent.into()], hash: Some(hex_md5(data)), size: Some(data.len() as u64), created: clock, can_edit: true, owned_by_me: true, ..Default::default() });
         s.content.insert(id.clone(), data.to_vec());
         Self::touch(&mut s, &id);
         id
@@ -85,7 +85,7 @@ impl FakeCloud {
     pub fn edit(&self, id: &str, data: &[u8]) {
         let mut s = self.s.lock();
         let it = s.items.get_mut(id).expect("no such item");
-        it.md5 = Some(hex_md5(data));
+        it.hash = Some(hex_md5(data));
         it.size = Some(data.len() as u64);
         s.content.insert(id.into(), data.to_vec());
         Self::touch(&mut s, id);
@@ -219,7 +219,7 @@ impl Cloud for FakeCloud {
             // A converted Google file updated from an Office file.
             s.content.insert(id.clone(), data);
         } else {
-            it.md5 = Some(hex_md5(&data));
+            it.hash = Some(hex_md5(&data));
             it.size = Some(data.len() as u64);
             s.content.insert(id.clone(), data);
         }

@@ -317,7 +317,7 @@ impl Engine {
 
     /// Whether a cloud file's content differs from what was planned on.
     fn content_differs(planned: &CloudItem, now: &CloudItem) -> bool {
-        match (&planned.md5, &now.md5) {
+        match (&planned.hash, &now.hash) {
             (Some(a), Some(b)) => a != b,
             _ => planned.version != now.version,
         }
@@ -338,8 +338,8 @@ impl Engine {
             if (l.mtime + b.l_mtime).abs() > 0.0005 {
                 return true;
             }
-            return match &b.c_md5 {
-                Some(m) if b.kind == 'f' => md5_file(&self.local_path(p)).ok().as_ref() != Some(m),
+            return match &b.c_hash {
+                Some(m) if b.kind == 'f' => self.cloud.hash_local(&self.local_path(p)).ok().as_ref() != Some(m),
                 _ => false,
             };
         }
@@ -352,7 +352,7 @@ impl Engine {
         }
         match c.kind {
             'd' => false,
-            'f' if c.item.md5.is_some() => c.item.md5 != b.c_md5,
+            'f' if c.item.hash.is_some() => c.item.hash != b.c_hash,
             _ => c.item.version != b.c_version,
         }
     }
@@ -361,7 +361,7 @@ impl Engine {
         // A time this recent could be shared by an edit still to come: mark
         // it racy (negative) so the next look compares content.
         let racy = l.mtime > crate::db::now() - 2.0;
-        Base { path: path.into(), kind, cl_id: c.id.clone(), ino: l.ino, l_mtime: if racy { -l.mtime } else { l.mtime }, l_size: l.size, c_md5: c.md5.clone(), c_version: c.version }
+        Base { path: path.into(), kind, cl_id: c.id.clone(), ino: l.ino, l_mtime: if racy { -l.mtime } else { l.mtime }, l_size: l.size, c_hash: c.hash.clone(), c_version: c.version }
     }
 
     /// "name (conflict host date time).ext", made unique (a second
@@ -411,7 +411,39 @@ impl Engine {
             self.db.issue(&rid, p, "error", "read", &format!("Can't read this: {e}"))?;
         }
         if !scan.symlinks.is_empty() {
-            self.db.issue(&rid, &scan.symlinks[0], "attention", "symlink", &format!("{} symbolic link(s) aren't synced (Google Drive can't hold links). Sync the folders they point to instead.", scan.symlinks.len()))?;
+            self.db.issue(&rid, &scan.symlinks[0], "attention", "symlink", &format!("{} symbolic link(s) aren't synced ({} can't hold links). Sync the folders they point to instead.", scan.symlinks.len(), self.cloud.label()))?;
+        }
+
+        // A cloud where names differing only in case are one file (Dropbox,
+        // OneDrive) can't hold both "Notes.txt" and "notes.txt": the one
+        // already synced (else the first) goes, the others stay here only,
+        // with what's inside them, until one is renamed.
+        self.db.clear_issues_sub(&rid, "case_clash")?;
+        if self.cloud.case_insensitive() {
+            // Names already taken there: cloud items not synced yet, then
+            // local ones in order (synced ones first). A case-only rename
+            // of a synced item isn't a clash (its old name is free: it's a
+            // move).
+            let mut taken: HashMap<String, String> = cloud.keys().filter(|k| !base.contains_key(*k)).map(|k| (k.to_lowercase(), k.clone())).collect();
+            let mut keys: Vec<String> = localm.keys().cloned().collect();
+            keys.sort_by_key(|k| (!base.contains_key(k), k.clone()));
+            let mut clash: Vec<(String, String)> = Vec::new();
+            for k in keys {
+                if clash.iter().any(|(c, _)| under(&k, c)) {
+                    continue;
+                }
+                match taken.get(&k.to_lowercase()) {
+                    Some(o) if o != &k && !base.contains_key(&k) => clash.push((k, o.clone())),
+                    _ => {
+                        taken.insert(k.to_lowercase(), k);
+                    }
+                }
+            }
+            for (k, o) in clash {
+                localm.retain(|p, _| p != &k && !under(p, &k));
+                let msg = format!("Not synced: {} can't hold both \"{}\" and \"{}\" (names that differ only in capital letters are the same name there). Rename one.", self.cloud.label(), name_of(&k), name_of(&o));
+                self.db.issue(&rid, &k, "attention", "case_clash", &msg)?;
+            }
         }
 
         if localm.is_empty() && base.values().filter(|b| b.kind != 'd').count() > 0 && !opts.allow_empty && self.up() {
@@ -469,7 +501,7 @@ impl Engine {
             }
             let dry = self.dry.load(Ordering::Relaxed);
             let done = if dry {
-                rep.plan.push(format!("move {} {from} → {to}", if from_cloud { "here" } else { "in Google Drive" }));
+                rep.plan.push(format!("move {} {from} → {to}", if from_cloud { "here".to_string() } else { format!("in {}", self.cloud.label()) }));
                 skip.insert(from.clone());
                 Ok(())
             } else if from_cloud {
@@ -526,7 +558,7 @@ impl Engine {
         let cloud_trash = ops.iter().filter(|o| matches!(o, Op::TrashCloud(..))).count();
         let files = base.len().max(1);
         if cloud_trash > 50 && cloud_trash * 2 > files && !opts.confirm_deletes {
-            let msg = format!("{cloud_trash} items would be deleted from Google Drive. Confirm if that's what you meant.");
+            let msg = format!("{cloud_trash} items would be deleted from {}. Confirm if that's what you meant.", self.cloud.label());
             self.db.issue(&rid, "", "attention", "mass_delete", &msg)?;
             rep.held = Some(msg);
             ops.retain(|o| !matches!(o, Op::TrashCloud(..)));
@@ -548,7 +580,8 @@ impl Engine {
         }
 
         if opts.dry_run {
-            rep.plan.extend(ops.iter().map(describe));
+            let (cl, tr) = (self.cloud.label(), self.cloud.trash_label());
+            rep.plan.extend(ops.iter().map(|o| describe(o, &cl, &tr)));
             return Ok(rep);
         }
 
@@ -563,8 +596,9 @@ impl Engine {
                 let matched = ops.iter().filter(|o| matches!(o, Op::Record(..))).count();
                 let downloads = ops.iter().filter(|o| matches!(o, Op::Download(..) | Op::Export(..) | Op::WriteLink(..) | Op::LocalMkdir(..))).count();
                 let msg = format!(
-                    "Before the first sync of {}: {matched} item(s) already match Google Drive, {uploads} will be uploaded, {downloads} downloaded, and {} differ on both sides (both versions are kept). Review, then Start.",
+                    "Before the first sync of {}: {matched} item(s) already match {}, {uploads} will be uploaded, {downloads} downloaded, and {} differ on both sides (both versions are kept). Review, then Start.",
                     root_path.display(),
+                    self.cloud.label(),
                     rep.conflicts.max(asides)
                 );
                 self.db.issue(&rid, "", "attention", "first_sync", &msg)?;
@@ -602,7 +636,7 @@ impl Engine {
                 }
                 if l.is_dir {
                     ops.push(Op::CloudMkdir(p.into()));
-                } else if gdocs::is_link_name(p) {
+                } else if self.cloud.is_google() && gdocs::is_link_name(p) {
                     match gdocs::read_link(&self.local_path(p)) {
                         Some(link) => ops.push(Op::CopyCloud(p.into(), link.file_id)),
                         None => ops.push(Op::Upload(p.into(), None, false)),
@@ -621,7 +655,7 @@ impl Engine {
                 match (l.is_dir, c.kind) {
                     (true, 'd') => ops.push(Op::Record(Self::base_for(p, 'd', &c.item, l))),
                     (false, 'f') => {
-                        let same = c.item.md5.as_ref().map(|m| md5_file(&self.local_path(p)).ok().as_ref() == Some(m)).unwrap_or(false);
+                        let same = c.item.hash.as_ref().map(|m| self.cloud.hash_local(&self.local_path(p)).ok().as_ref() == Some(m)).unwrap_or(false);
                         if same {
                             ops.push(Op::Record(Self::base_for(p, 'f', &c.item, l)));
                         } else {
@@ -737,7 +771,7 @@ impl Engine {
                             ops.push(Op::WriteLink(p.into(), c.item.clone()));
                             return;
                         }
-                        let same = c.kind == 'f' && c.item.md5.as_ref().map(|m| md5_file(&self.local_path(p)).ok().as_ref() == Some(m)).unwrap_or(false);
+                        let same = c.kind == 'f' && c.item.hash.as_ref().map(|m| self.cloud.hash_local(&self.local_path(p)).ok().as_ref() == Some(m)).unwrap_or(false);
                         if same {
                             ops.push(Op::Record(Self::base_for(p, 'f', &c.item, l)));
                         } else if self.root.mode == Mode::CloudToLocal {
@@ -770,13 +804,14 @@ impl Engine {
         rep.conflicts += 1;
         match (sub, how) {
             (_, Resolution::Ask) => {
+                let cl = self.cloud.label();
                 let msg = match sub {
-                    "edit_edit" => "Changed both here and in Google Drive.",
-                    "local_edit_cloud_delete" => "Changed here, but deleted in Google Drive.",
-                    _ => "Deleted here, but changed in Google Drive.",
+                    "edit_edit" => format!("Changed both here and in {cl}."),
+                    "local_edit_cloud_delete" => format!("Changed here, but deleted in {cl}."),
+                    _ => format!("Deleted here, but changed in {cl}."),
                 };
                 if !self.dry.load(Ordering::Relaxed) {
-                    let _ = self.db.issue(&self.root.id, p, "conflict", sub, msg);
+                    let _ = self.db.issue(&self.root.id, p, "conflict", sub, &msg);
                     self.emit(Event::Status { root: self.root.id.clone(), path: p.into(), state: 'C' });
                 }
             }
@@ -868,9 +903,9 @@ impl Engine {
         if rename.is_some() || mv.is_some() {
             // Only if Drive still has it where canopy last saw it (it may
             // have been moved there meanwhile) and the target folder is live.
-            let now = self.cloud.get(&b.cl_id)?.ok_or_else(|| anyhow!("gone from Google Drive meanwhile"))?;
+            let now = self.cloud.get(&b.cl_id)?.ok_or_else(|| anyhow!("gone from {} meanwhile", self.cloud.label()))?;
             if now.trashed || now.parents.first() != Some(&old_parent) || now.name != c.item.name {
-                bail!("moved or renamed in Google Drive meanwhile; it will be compared again");
+                bail!("moved or renamed in {} meanwhile; it will be compared again", self.cloud.label());
             }
             if mv.is_some() {
                 self.live_folder(&new_parent, parent_of(to))?;
@@ -888,7 +923,7 @@ impl Engine {
         }
         match base.get(dir) {
             Some(b) if b.kind == 'd' => Ok(b.cl_id.clone()),
-            _ => bail!("its folder {dir} isn't in Google Drive yet"),
+            _ => bail!("its folder {dir} isn't in {} yet", self.cloud.label()),
         }
     }
 
@@ -896,7 +931,7 @@ impl Engine {
         if dir.is_empty() {
             return Ok(self.root_id.clone());
         }
-        let id = self.db.base_get(&self.root.id, dir)?.filter(|b| b.kind == 'd').map(|b| b.cl_id).ok_or_else(|| anyhow!("its folder {dir} isn't in Google Drive yet"))?;
+        let id = self.db.base_get(&self.root.id, dir)?.filter(|b| b.kind == 'd').map(|b| b.cl_id).ok_or_else(|| anyhow!("its folder {dir} isn't in {} yet", self.cloud.label()))?;
         self.live_folder(&id, dir)?;
         Ok(id)
     }
@@ -913,7 +948,7 @@ impl Engine {
                 self.checked.lock().insert(id.to_string());
                 Ok(())
             }
-            _ => bail!("its folder {dir} was deleted in Google Drive meanwhile; it will be compared again"),
+            _ => bail!("its folder {dir} was deleted in {} meanwhile; it will be compared again", self.cloud.label()),
         }
     }
 
@@ -1017,7 +1052,7 @@ impl Engine {
                 std::fs::create_dir_all(&lp)?;
                 let l = local::stat(&lp).ok_or_else(|| anyhow!("couldn't make the folder"))?;
                 self.db.base_put(rid, &Self::base_for(&p, 'd', &item, &l))?;
-                self.activity("add", &p, "folder from Google Drive");
+                self.activity("add", &p, &format!("folder from {}", self.cloud.label()));
                 Ok(())
             }
             Op::CloudMkdir(p) => {
@@ -1026,7 +1061,7 @@ impl Engine {
                 self.note(&item);
                 let l = local::stat(&self.local_path(&p)).ok_or_else(|| anyhow!("the folder is gone"))?;
                 self.db.base_put(rid, &Self::base_for(&p, 'd', &item, &l))?;
-                self.activity("add", &p, "folder to Google Drive");
+                self.activity("add", &p, &format!("folder to {}", self.cloud.label()));
                 Ok(())
             }
             Op::SetAside(p, aside) => {
@@ -1051,8 +1086,8 @@ impl Engine {
                 let r = self.cloud.download(&item.id, &tmp, &prog);
                 self.emit(Event::TransferDone { root: rid.clone(), path: p.clone(), up: false, ok: r.is_ok() });
                 r?;
-                if let Some(m) = &item.md5 {
-                    let got = md5_file(&tmp)?;
+                if let Some(m) = &item.hash {
+                    let got = self.cloud.hash_local(&tmp)?;
                     if &got != m {
                         let _ = std::fs::remove_file(&tmp);
                         bail!("the download was damaged (checksum mismatch); it will be tried again");
@@ -1079,9 +1114,9 @@ impl Engine {
                     // itself (the mirror can be seconds behind).
                     let now = self.cloud.get(&e.id)?;
                     match now {
-                        None => bail!("deleted in Google Drive meanwhile; it will be compared again"),
-                        Some(n) if n.trashed => bail!("moved to Google Drive's trash meanwhile; it will be compared again"),
-                        Some(n) if Self::content_differs(e, &n) => bail!("changed in Google Drive meanwhile; it will be compared again"),
+                        None => bail!("deleted in {} meanwhile; it will be compared again", self.cloud.label()),
+                        Some(n) if n.trashed => bail!("moved to {} meanwhile; it will be compared again", self.cloud.trash_label()),
+                        Some(n) if Self::content_differs(e, &n) => bail!("changed in {} meanwhile; it will be compared again", self.cloud.label()),
                         _ => {}
                     }
                     if pin {
@@ -1142,7 +1177,7 @@ impl Engine {
                 }
                 self.db.base_remove_tree(rid, &p)?;
                 rep.deletes += 1;
-                self.activity("local_delete", &p, "moved to the Trash (deleted in Google Drive)");
+                self.activity("local_delete", &p, &format!("moved to the Trash (deleted in {})", self.cloud.label()));
                 Ok(())
             }
             Op::TrashCloud(p, id) => {
@@ -1158,8 +1193,8 @@ impl Engine {
                             self.db.base_remove_tree(rid, &p)?;
                             return Ok(());
                         }
-                        Some(n) if b.kind != 'd' && (n.md5.is_some() && n.md5 != b.c_md5 || n.md5.is_none() && n.version != b.c_version) => {
-                            bail!("changed in Google Drive since; kept there and downloaded again");
+                        Some(n) if b.kind != 'd' && (n.hash.is_some() && n.hash != b.c_hash || n.hash.is_none() && n.version != b.c_version) => {
+                            bail!("changed in {} since; kept there and downloaded again", self.cloud.label());
                         }
                         _ => {}
                     }
@@ -1168,13 +1203,13 @@ impl Engine {
                 self.note_trashed(&id);
                 self.db.base_remove_tree(rid, &p)?;
                 rep.deletes += 1;
-                self.activity("delete", &p, "moved to Google Drive's trash");
+                self.activity("delete", &p, &format!("moved to {}", self.cloud.trash_label()));
                 Ok(())
             }
             Op::Unsync(p) => {
                 self.db.base_remove_tree(rid, &p)?;
                 rep.unsynced.push(p.clone());
-                self.activity("unsync", &p, "deleted while canopy wasn't running; kept in Google Drive");
+                self.activity("unsync", &p, &format!("deleted while canopy wasn't running; kept in {}", self.cloud.label()));
                 Ok(())
             }
         }
@@ -1194,8 +1229,8 @@ impl Engine {
         // different one is kept beside it as a conflict copy.
         if expect.is_some() && kind == 'f' {
             if let Some(b) = self.db.base_get(&self.root.id, p)? {
-                if let Some(m) = &b.c_md5 {
-                    if md5_file(&lp).ok().as_ref() != Some(m) {
+                if let Some(m) = &b.c_hash {
+                    if self.cloud.hash_local(&lp).ok().as_ref() != Some(m) {
                         let aside = self.conflict_name(p);
                         rename_new(&lp, &self.local_path(&aside))?;
                         self.activity("conflict", p, &format!("this computer's version kept as {}", name_of(&aside)));
@@ -1222,7 +1257,7 @@ impl Engine {
             crate::trash::trash(&lp, self.ctx.trash_dir.as_deref()).map_err(|e| anyhow!(e))?;
         }
         self.db.base_remove_tree(&self.root.id, rel)?;
-        self.activity("unsync", rel, "removed from this computer, kept in Google Drive");
+        self.activity("unsync", rel, &format!("removed from this computer, kept in {}", self.cloud.label()));
         Ok(())
     }
 }
@@ -1238,10 +1273,10 @@ fn free_space(p: &Path) -> Option<u64> {
 }
 
 /// One planned action in words (dry runs).
-fn describe(o: &Op) -> String {
+fn describe(o: &Op, cl: &str, trash: &str) -> String {
     match o {
         Op::LocalMkdir(p, _) => format!("make folder here: {p}"),
-        Op::CloudMkdir(p) => format!("make folder in Google Drive: {p}"),
+        Op::CloudMkdir(p) => format!("make folder in {cl}: {p}"),
         Op::SetAside(p, a) => format!("keep this computer's {p} as {a}"),
         Op::Download(p, it, l) => format!("{} {p} ({} bytes)", if l.is_some() { "download newer" } else { "download" }, it.size.unwrap_or(0)),
         Op::WriteLink(p, _) => format!("write link file {p}"),
@@ -1251,8 +1286,8 @@ fn describe(o: &Op) -> String {
         Op::Record(b) => format!("matches already: {}", b.path),
         Op::Forget(p) => format!("forget {p} (gone on both sides)"),
         Op::TrashLocal(p) => format!("move to this computer's Trash: {p}"),
-        Op::TrashCloud(p, _) => format!("move to Google Drive's trash: {p}"),
-        Op::Unsync(p) => format!("stop syncing {p} (kept in Google Drive)"),
+        Op::TrashCloud(p, _) => format!("move to {trash}: {p}"),
+        Op::Unsync(p) => format!("stop syncing {p} (kept in {cl})"),
     }
 }
 

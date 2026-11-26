@@ -24,7 +24,7 @@ pub struct Base {
     pub ino: u64,
     pub l_mtime: f64,
     pub l_size: u64,
-    pub c_md5: Option<String>,
+    pub c_hash: Option<String>,
     pub c_version: i64,
 }
 
@@ -172,7 +172,7 @@ impl Db {
                     ino: r.get::<_, i64>(3)? as u64,
                     l_mtime: r.get(4)?,
                     l_size: r.get::<_, i64>(5)? as u64,
-                    c_md5: r.get(6)?,
+                    c_hash: r.get(6)?,
                     c_version: r.get(7)?,
                 })
             })?
@@ -191,7 +191,7 @@ impl Db {
                     ino: r.get::<_, i64>(3)? as u64,
                     l_mtime: r.get(4)?,
                     l_size: r.get::<_, i64>(5)? as u64,
-                    c_md5: r.get(6)?,
+                    c_hash: r.get(6)?,
                     c_version: r.get(7)?,
                 })
             })
@@ -202,7 +202,7 @@ impl Db {
     pub fn base_put(&self, root: &str, b: &Base) -> Result<()> {
         self.c.lock().execute(
             "INSERT OR REPLACE INTO base (root, path, kind, cl_id, ino, l_mtime, l_size, c_md5, c_version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            params![root, b.path, b.kind.to_string(), b.cl_id, b.ino as i64, b.l_mtime, b.l_size as i64, b.c_md5, b.c_version],
+            params![root, b.path, b.kind.to_string(), b.cl_id, b.ino as i64, b.l_mtime, b.l_size as i64, b.c_hash, b.c_version],
         )?;
         Ok(())
     }
@@ -266,6 +266,13 @@ impl Db {
 
     pub fn clear_issue(&self, root: &str, path: &str, kind: &str) -> Result<()> {
         self.c.lock().execute("DELETE FROM issues WHERE root = ?1 AND path = ?2 AND kind = ?3", params![root, path, kind])?;
+        Ok(())
+    }
+
+    /// Every issue of a root with this sub-kind (they're found again by
+    /// each pass that still has them).
+    pub fn clear_issues_sub(&self, root: &str, sub: &str) -> Result<()> {
+        self.c.lock().execute("DELETE FROM issues WHERE root = ?1 AND sub = ?2", [root, sub])?;
         Ok(())
     }
 
