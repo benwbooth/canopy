@@ -3,8 +3,9 @@ import QtQuick.Controls.Basic
 
 // Adding an account. Google: from hearth's Internet Accounts, or the
 // one-time client setup and signing in through the browser (or pasting the
-// address it ended on). Other clouds: a remote set up in rclone (grove's
-// Connect to Server sets them up), synced to its own folder.
+// address it ended on). Other clouds: a drive set up in rclone (hearth's
+// Settings › Accounts › Cloud Drives sets them up; grove's Connect to Server
+// without hearth), synced to its own folder.
 Sheet {
     id: si
     property var win
@@ -16,6 +17,18 @@ Sheet {
     function loadRemotes() {
         loadingRemotes = true
         win.api("rclone_remotes", {}, r => { si.remotes = r || { available: false, remotes: [] }; si.loadingRemotes = false }, e => { si.error = e; si.loadingRemotes = false })
+    }
+    // Set up a new drive: hearth's Settings › Accounts › Cloud Drives (grove
+    // without hearth). The list here follows rclone's config meanwhile.
+    function addCloudDrive() {
+        if (win.status.hearth) win.api("hearth_open", { arg: "clouddrives:add" }, ok => { if (!ok) si.win.cn.openGrove() })
+        else win.cn.openGrove()
+    }
+    Timer {
+        interval: 3000
+        repeat: true
+        running: si.visible && !si.google && !si.waiting
+        onTriggered: si.win.api("rclone_remotes", {}, r => { if (r && JSON.stringify(r) !== JSON.stringify(si.remotes)) si.remotes = r }, () => {})
     }
     function addRemote(r) {
         si.error = ""
@@ -98,7 +111,7 @@ Sheet {
             color: Theme.fgSecondary
             text: si.remotes.available === false
                   ? "Other clouds go through rclone, which isn't installed."
-                  : "canopy keeps a folder in ~/Canopy and the cloud the same, both ways, like Google Drive (no mounting: the files are really here). These are the clouds set up in rclone; set up a new one in grove: Go › Connect to Server…"
+                  : "canopy keeps a folder in ~/Canopy and the cloud the same, both ways, like Google Drive (no mounting: the files are really here). " + ((si.remotes.remotes || []).length ? "Pick one of your cloud drives, or add another:" : "First add the cloud drive (once, for all your apps): click Add a Cloud Drive below, pick the service and sign in. It shows up here by itself.")
         }
         Repeater {
             model: si.remotes.remotes || []
@@ -147,13 +160,6 @@ Sheet {
                 }
             }
         }
-        GLabel {
-            visible: si.remotes.available !== false && !si.loadingRemotes && (si.remotes.remotes || []).length === 0
-            width: parent.width
-            wrapMode: Text.Wrap
-            elide: Text.ElideNone
-            text: "No clouds set up in rclone yet."
-        }
         GField {
             id: folderField
             visible: (si.remotes.remotes || []).length > 0
@@ -163,12 +169,11 @@ Sheet {
         }
         Row {
             spacing: 8
-            GButton {
-                flat: false
-                iconName: "folder-remote|network-server"
-                text: "Open grove…"
-                tip: "Set up a new cloud in grove: Go › Connect to Server…; it appears here when you come back"
-                onClicked: si.win.cn.openGrove()
+            PushButton {
+                primary: (si.remotes.remotes || []).length === 0
+                text: "Add a Cloud Drive…"
+                tip: si.win.status.hearth ? "Opens Settings › Accounts › Cloud Drives: pick the service (Dropbox, OneDrive, S3…) and sign in, once for all your apps" : "Opens grove's Connect to Server, where cloud drives are set up"
+                onClicked: si.addCloudDrive()
             }
             GButton { flat: false; iconName: "view-refresh"; text: "Look Again"; tip: "List rclone's clouds again"; onClicked: si.loadRemotes() }
         }

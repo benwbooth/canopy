@@ -21,7 +21,7 @@ pub const USAGE: &str = "canopy: Google Drive sync (and Dropbox, OneDrive, S3...
   canopy sync                    look for changes now
   canopy activity [N]            the last N things canopy did
   canopy account list | add [--paste] | remove EMAIL
-  canopy account remotes         the clouds set up in rclone (grove's Connect to Server)
+  canopy account remotes         the cloud drives set up in rclone (Settings › Accounts)
   canopy account add --rclone REMOTE: [--to FOLDER]   sync one (REMOTE:folder for a part)
   canopy ignore-rules [-a EMAIL] list | add RULE... | clear
   canopy export-option [-a EMAIL] [LINK|MS_OFFICE|OPEN_DOCUMENT]

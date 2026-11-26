@@ -33,7 +33,7 @@ Item {
             }
             PushButton {
                 text: "Other Clouds…"
-                tip: "Dropbox, OneDrive, Box, S3, SFTP, WebDAV and more, set up in rclone (grove's Connect to Server)"
+                tip: "Dropbox, OneDrive, Box, S3, SFTP, WebDAV and more (set up once in Settings › Accounts › Cloud Drives)"
                 onClicked: es.win.addAccount(1)
             }
         }
